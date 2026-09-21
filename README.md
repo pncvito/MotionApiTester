@@ -6,7 +6,7 @@
 
 - 形态：Windows 桌面应用（WPF / .NET Framework 4.8 / x64）
 - 仓库：<https://github.com/pncvito/MotionApiTester>
-- 面向使用者：本文档。面向开发者（改代码的硬性约束、架构说明、调用链路）：`CLAUDE.md`
+- 面向使用者：本文档。面向开发者：`OVERVIEW.md`（分层、核心机制、数据流、设计取舍、技术债）与 `CLAUDE.md`（改代码前的硬性约束、构建与校验命令）
 
 ---
 
@@ -52,7 +52,7 @@
 - Windows x64
 - .NET Framework 4.8
 - Visual Studio 2019 / 2022（或更高），或独立 MSBuild
-- 设备 DLL（**不入库**，需自行放入 `Bin\`）
+- 设备 DLL（**不入库**，需自行放入 `src\Bin\MotionAPI\`）
 
 ---
 
@@ -62,7 +62,7 @@
 git clone https://github.com/pncvito/MotionApiTester.git D:\MotionApiTester
 ```
 
-**1. 放入设备 DLL** —— `.gitignore` 忽略了 `Bin\`，克隆后必须手动拷贝。目录里通常是：
+**1. 放入设备 DLL** —— 设备 DLL 是厂商二进制，不入库（`.gitignore` 忽略了 `Bin\`），克隆后必须手动拷贝到 **`src\Bin\MotionAPI\`**。这个位置写在 `%APPDATA%\MotionApiTester\settings.json` 的 `DefaultDeviceDirectory` 里；想放别处也行，之后在设置窗口里改这一项（留空则按 exe 相对位置自动探测）。目录里通常是：
 
 | 文件 | 作用 |
 |---|---|
@@ -82,11 +82,12 @@ $msbuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Curren
 
 > `.sln` 里的平台名是 `Any CPU`，实际架构由 csproj 的 `PlatformTarget=x64` 决定，不要改。
 > 也不要用 `dotnet build` 编这个旧格式工程（会解析不到 `PackageReference`，报 CS0234 / CS0246，那不是代码问题）。
+> Debug 的输出目录由 csproj 的 `OutputPath` 指定，当前是 **`src\Bin\`**（不是默认的 `bin\Debug\`）—— exe 与 NuGet 依赖都落在那里；Release 仍输出到 `src\bin\Release\`。
 
 **3. 运行**：
 
 ```powershell
-D:\MotionApiTester\src\bin\Debug\MotionApiTester.exe
+D:\MotionApiTester\src\Bin\MotionApiTester.exe
 ```
 
 ---
@@ -151,7 +152,8 @@ D:\MotionApiTester\src\bin\Debug\MotionApiTester.exe
 
 | 路径 | 说明 |
 |---|---|
-| `Bin\` | 设备 DLL 默认目录（也可在设置里指定其它目录） |
+| `src\Bin\` | Debug 构建输出（csproj 的 `OutputPath`，已在 `.gitignore` 中） |
+| `src\Bin\MotionAPI\` | 设备 DLL 目录（`settings.json` 的 `DefaultDeviceDirectory` 指向这里；留空则按 exe 相对位置自动探测） |
 | `D:\MotionConfig\ConfigHardware\MachineType.json` | 机型字符串（只读，用于机型匹配） |
 
 ---
@@ -160,9 +162,11 @@ D:\MotionApiTester\src\bin\Debug\MotionApiTester.exe
 
 ```
 D:\MotionApiTester\
-├─ Bin\                     设备 DLL（厂商二进制，未入库）
+├─ doc\                     MotionAPI 说明文档（厂商培训资料，未入库）
 ├─ src\                     工程本体
 │  ├─ MotionApiTester.sln / .csproj
+│  ├─ Bin\                  Debug 构建输出（csproj 的 OutputPath，已 gitignore）
+│  │  └─ MotionAPI\         设备 DLL（厂商二进制，未入库；settings.json 指向这里）
 │  ├─ App.xaml(.cs)         应用级样式（输入控件隐含样式）+ 全局异常兜底
 │  ├─ MainWindow.xaml(.cs)  主界面、快捷键、IL 签名、结果卡片配色
 │  ├─ Models\               ApiMethod / ApiAssembly / ApiProperty / DeviceProfile / CallHistoryItem …
@@ -170,8 +174,11 @@ D:\MotionApiTester\
 │  ├─ ViewModels\           MainViewModel（7 个 partial）+ TreeBuilder / RelayCommand / Converters
 │  ├─ Views\                SettingsWindow / DeviceWizardWindow
 │  └─ Themes\               LightTheme.xaml / DarkTheme.xaml
-└─ CLAUDE.md                开发者指引（硬性约束 / 架构 / 调用链路）
+├─ CLAUDE.md                开发者指引（硬性约束 / 架构 / 调用链路）
+└─ OVERVIEW.md              开发者指引（分层 / 机制 / 数据流 / 技术债）
 ```
+
+> ⚠️ 设备 DLL 现在放在**构建输出目录内部**（`src\Bin\MotionAPI\`），而 `Bin\` 已被 `.gitignore` 忽略 —— VS 的「清理」、手动删 `bin`、`git clean -xdf` 都会把设备 DLL 一起删掉，而这些厂商二进制（`LTSMC.dll` 除外）没有可靠的重取来源。**建议另存一份备份**，或把设备库挪到不参与构建清理的位置。
 
 ---
 

@@ -19,7 +19,7 @@ namespace MotionApiTester.Services
     ///   <item>当前工作目录</item>
     ///   <item><c>PATH</c> 环境变量中的目录</item>
     /// </list>
-    /// 设备目录（如 <c>D:\MotionApiTester\Bin</c>）<b>不在这六项中的任何一项</b>，
+    /// 设备目录（如 <c>D:\MotionApiTester\src\Bin\MotionAPI</c>）<b>不在这六项中的任何一项</b>，
     /// 于是即便 LTSMC.dll 就躺在那里，LoadLibrary 依然找不到它，
     /// 抛 <c>DllNotFoundException</c>，HRESULT <c>0x8007007E</c>（<c>ERROR_MOD_NOT_FOUND</c>）。
     ///

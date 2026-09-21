@@ -75,14 +75,15 @@ MSBUILD="/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/B
 ### 编译校验的替代通道
 
 `dotnet build` 直接编这个旧格式工程时会**解析不到 PackageReference**（System.Text.Json / CommunityToolkit.Mvvm），
-报 CS0234 / CS0246，这不是代码问题。需要编译校验时改用 `.verify/Verify.csproj`（SDK 风格，glob 复用 `src/**/*.cs` + `obj/Debug/*.g.cs`）：
+报 CS0234 / CS0246，这不是代码问题。需要编译校验时改用 **`tools/Verify.csproj`**
+（SDK 风格，glob 复用 `..\src\**\*.cs` 与 `src\obj\**\*.g.cs`）：
 
 ```powershell
-& "C:\Program Files\dotnet\dotnet.exe" build "D:\MotionApiTester\.verify\Verify.csproj" -c Debug --nologo
+& "C:\Program Files\dotnet\dotnet.exe" build "D:\MotionApiTester\tools\Verify.csproj" -c Debug --nologo
 ```
 
-`.verify/` 只用于验证 C# 能否编译通过，**不产出正式程序集**，已在 .gitignore 中。
-注意它不校验 XAML，XAML 改动需另外检查（可用 XML 解析器做基本结构校验）。
+它只回答"src 下的 C# 现在还能不能编译通过"，**不产出正式产物**；产物落在 `tools\bin` / `tools\obj`（已被 gitignore）。
+注意它**不校验 XAML**，XAML 改动要用下面的脚本另外检查。
 
 ### 结构一致性校验
 
@@ -92,8 +93,9 @@ MSBUILD="/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/B
 python tools/verify-structure.py
 ```
 
-⚠️ 仓库里 `tools/*.py` 与 `.verify/` 目前**都不存在**（被 `aab4724` 一起删掉了），
-脚本与校验工程需要时按本节说明重建。
+⚠️ 当前状态：`tools/verify-structure.py`、`tools/verify-ico.py` 与 `tools/Verify.csproj` **都已存在**
+（两个 .py 从 `aab4724^` 恢复，并修了「Windows 控制台非 UTF-8 时中文输出抛 `UnicodeEncodeError`」
+与「`src\Bin` 首字母大写导致跳过判断失效」两个问题，详见各自文件头部注释）。
 
 它会检查：XAML 里每个 `{Binding Xxx}` 的根标识符是否有对应的 public 成员、csproj 的
 `Compile`/`Page` 清单与磁盘文件是否互相覆盖、已删除的成员是否还有残留引用、XAML 事件处理器
@@ -131,10 +133,12 @@ python tools/verify-ico.py
 
 ```
 D:\MotionApiTester\
-├─ Bin\                     设备 DLL 存放目录（厂商二进制，未入库）
+├─ doc\                     厂家培训资料（与上位机对接文档等，未入库）
 ├─ src\                     工程本体
 │  ├─ MotionApiTester.sln
 │  ├─ MotionApiTester.csproj
+│  ├─ Bin\                  Debug 构建输出（csproj 的 OutputPath，已 gitignore）
+│  │  └─ MotionAPI\         设备 DLL（厂商二进制，未入库；settings.json 的 DefaultDeviceDirectory 指向这里）
 │  ├─ App.xaml(.cs)         全局异常兜底 → %TEMP%\MotionApiTester\crash.log
 │  ├─ MainWindow.xaml(.cs)  主界面 + IL 签名 / 结果卡片
 │  ├─ Models\               ApiMethod / ApiProperty(ApiField) / ApiAssembly(ApiType) / DeviceProfile / ...
@@ -142,7 +146,7 @@ D:\MotionApiTester\
 │  ├─ Themes\               LightTheme.xaml / DarkTheme.xaml
 │  ├─ ViewModels\           MainViewModel(7 个 partial) / TreeBuilder / RelayCommand / TreeNodeVm / Converters
 │  └─ Views\                SettingsWindow / DeviceWizardWindow
-└─ .verify\                 编译校验专用工程（gitignore）
+└─ tools\                   校验脚本（verify-structure.py / verify-ico.py）+ 编译校验工程（Verify.csproj，产物在 tools\bin / tools\obj，已 gitignore）
 ```
 
 ## 架构说明
@@ -162,7 +166,7 @@ D:\MotionApiTester\
 | 服务 | 职责 |
 |------|------|
 | `DeviceDirectoryScanner` | 扫描目录，按命名规则识别 DLL 角色 |
-| `DeviceDirectoryResolver` | 解析设备 DLL 目录：settings 优先，否则按 exe 相对位置探测（`Bin\` → 仓库根 `Bin\` → …） |
+| `DeviceDirectoryResolver` | 解析设备 DLL 目录：`DefaultDeviceDirectory` 优先，否则按 exe 相对位置探测（`<exe>\Bin` → 上三级 `Bin` → 上一级 `Bin`） |
 | `MachineTypeReader` | 读 `D:\MotionConfig\ConfigHardware\MachineType.json` |
 | `MachineTypeMatcher` | Jaccard 相似度匹配机型字符串与 `OptoFidelity.{Model}.dll` |
 | `AssemblyLoader` | 单程序集加载 + Costura 检测（**当前未被使用**，MainViewModel 走自己的 byte[] 加载路径） |
@@ -237,7 +241,7 @@ Row4 Expander 实时日志          Row5 底部状态栏（计数 + 快捷键）
 
 | 路径 | 用途 |
 |------|------|
-| `D:\MotionApiTester\Bin` | 设备 DLL 存放目录。默认值由 `DeviceDirectoryResolver` 按 exe 相对位置探测（**不写死绝对路径**）；`settings.json` 里配了 `DefaultDeviceDirectory` 则优先用它 |
+| `src\Bin\MotionAPI\` | 设备 DLL 目录（本机 `settings.json` 的 `DefaultDeviceDirectory` 指向这里）。解析顺序：`DefaultDeviceDirectory` 配了且目录存在就用它，否则由 `DeviceDirectoryResolver` 按 exe 相对位置探测（**不写死绝对路径**） |
 | `D:\MotionConfig\ConfigHardware\MachineType.json` | 机型字符串（只读） |
 | `%APPDATA%\MotionApiTester\settings.json` | 主题 / 日志行数 / 超时 / `DefaultDeviceDirectory`（留空=自动探测）/ `ExtraDependencySearchPaths`（额外依赖搜索目录） |
 | `%APPDATA%\MotionApiTester\devices.json` | 已登记设备（`DeviceManager`） |

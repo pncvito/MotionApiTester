@@ -146,6 +146,71 @@ namespace MotionApiTester
             };
         }
 
+        // ============== 快捷键 ==============
+        //
+        // 原先走 XAML 的 <Window.InputBindings><KeyBinding Command="{Binding ...}"/>。
+        // 用 .verify/wpfprobe 做的最小复现证明这条路不可靠：
+        // KeyBinding 是 Freezable、不在可视树上，当它声明在 <Window.DataContext> **之前**时
+        // （MainWindow.xaml 原来就是这个顺序），绑定要等窗口首次 Show 之后才解析出来，
+        // 而按键又只在 CanExecute 为 true 时才执行 —— 一旦不满足就是"按下去毫无反应"，
+        // 既不在输出里报绑定错误，也没有任何反馈，极难定位。
+        // 改在窗口层统一拦截 PreviewKeyDown：Vm 一定拿得到，Preview 先于任何子控件
+        //（不受焦点位置影响），并且可以对"没选中方法"这类情况给出显式提示。
+        protected override void OnPreviewKeyDown(KeyEventArgs e)
+        {
+            base.OnPreviewKeyDown(e);
+            if (e.Handled) return;
+
+            var vm = Vm;
+            if (vm == null) return;
+
+            // 带 Alt 的组合留给系统(Alt+F4 关窗 / Alt+Space 系统菜单)
+            if ((Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt) return;
+
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+
+            ICommand command = null;
+            if (key == Key.F5)
+            {
+                // F5 的 CanExecute 取决于"是否选中了可调用成员"。
+                // 不满足时若无任何反馈，就会被当成"快捷键坏了"，所以这里显式写一条状态栏提示。
+                if (!vm.InvokeCommand.CanExecute(null))
+                {
+                    vm.StatusText = vm.IsInvoking
+                        ? "⏳ 正在调用中，请等本次调用结束"
+                        : "⚠️ 未选中可调用成员：请先在左侧 API 树里选一个方法或构造函数，再按 F5";
+                    e.Handled = true;
+                    return;
+                }
+                command = vm.InvokeCommand;
+            }
+            else if (ctrl)
+            {
+                if (key == Key.O) command = vm.LoadDeviceCommand;
+                else if (key == Key.L) command = vm.ClearLogCommand;
+                else if (key == Key.H) command = vm.ClearHistoryCommand;
+                else if (key == Key.F) command = vm.SearchFocusCommand;
+            }
+            // Esc 只在搜索框有内容时拦截，否则会把 ComboBox 收下拉之类的默认行为吃掉
+            else if (key == Key.Escape && !string.IsNullOrEmpty(vm.SearchText))
+            {
+                command = vm.SearchClearCommand;
+            }
+
+            // CanExecute 为 false（例如没选中方法时的 F5）就不标记 Handled，
+            // 让按键继续下传，避免"没执行又吃掉了键"
+            if (TryRunCommand(command)) e.Handled = true;
+        }
+
+        /// <summary>命令可执行则执行并返回 true；command 为 null 或不可执行返回 false</summary>
+        private static bool TryRunCommand(ICommand command)
+        {
+            if (command == null || !command.CanExecute(null)) return false;
+            command.Execute(null);
+            return true;
+        }
+
         // ============== 树选中 ==============
         private void TvApi_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
         {

@@ -1,5 +1,6 @@
 using System.Windows;
 using MotionApiTester.Services;
+using MotionApiTester.ViewModels;
 
 namespace MotionApiTester.Views
 {
@@ -7,9 +8,14 @@ namespace MotionApiTester.Views
     {
         public AppSettings ResultSettings { get; private set; }
 
-        public SettingsWindow(AppSettings settings)
+        /// <summary>
+        /// <paramref name="vm"/> 用于「设备」一节：直接复用主窗口的
+        /// Devices / SelectedDevice / 切换·添加·移除 命令，不另建一套状态。
+        /// </summary>
+        public SettingsWindow(AppSettings settings, MainViewModel vm)
         {
             InitializeComponent();
+            DataContext = vm;
 
             // 加载当前值
             switch (settings.Theme)

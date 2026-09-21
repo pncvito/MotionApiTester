@@ -113,6 +113,8 @@
     <Compile Include="Services\SettingsService.cs" />
     <Compile Include="Services\DeviceDirectoryResolver.cs" />
     <Compile Include="Services\DependencyResolver.cs" />
+    <Compile Include="Services\CosturaActivator.cs" />
+    <Compile Include="Services\NativeSearchPath.cs" />
     <Compile Include="Services\LogTextBuffer.cs" />
     <Compile Include="Services\ThemeManager.cs" />
     <Compile Include="Views\SettingsWindow.xaml.cs">

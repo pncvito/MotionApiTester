@@ -89,7 +89,13 @@ namespace MotionApiTester.ViewModels
 
         // ============== 属性 ==============
         public string StatusText { get => _statusText; set => SetProperty(ref _statusText, value); }
-        public string MachineTypeText { get => _machineTypeText; set => SetProperty(ref _machineTypeText, value); }
+
+        /// <summary>机型(来自 ConfigHardware\MachineType.json)。底部状态栏"当前设备"摘要也用它。</summary>
+        public string MachineTypeText
+        {
+            get => _machineTypeText;
+            set { if (SetProperty(ref _machineTypeText, value)) OnPropertyChanged(nameof(LoadedAssemblySummary)); }
+        }
         public ObservableCollection<ApiAssembly> Assemblies { get => _assemblies; set => SetProperty(ref _assemblies, value); }
         public string LogText { get => _logText; set => SetProperty(ref _logText, value); }
         public string ResultText { get => _resultText; set => SetProperty(ref _resultText, value); }
@@ -160,6 +166,21 @@ namespace MotionApiTester.ViewModels
         /// <summary>原生 DLL 数</summary>
         public int TotalNativeDllsCount => NativeDlls.Count;
 
+        /// <summary>
+        /// 程序集集合变化后刷新统计。
+        /// Total*Count 都是计算属性（不从字段读），ObservableCollection.Clear/Add 不会触发它们，
+        /// 必须显式通知，否则状态栏与"API 树"N 类型/方法 数字会停留在上一次的值。
+        /// </summary>
+        private void NotifyAssemblyStats()
+        {
+            OnPropertyChanged(nameof(TotalTypesCount));
+            OnPropertyChanged(nameof(TotalMethodsCount));
+            OnPropertyChanged(nameof(TotalPropertiesCount));
+            OnPropertyChanged(nameof(TotalFieldsCount));
+            OnPropertyChanged(nameof(TotalNativeDllsCount));
+            OnPropertyChanged(nameof(LoadedAssemblySummary));
+        }
+
         /// <summary>签名文本(绑定显示)</summary>
         public string SignatureText { get => _signatureText; set => SetProperty(ref _signatureText, value); }
 
@@ -174,14 +195,26 @@ namespace MotionApiTester.ViewModels
             }
         }
 
-        /// <summary>已加载程序集摘要(状态栏用,如 "MyMotionLib.dll (v2.4.1)")</summary>
+        /// <summary>
+        /// 底部状态栏"当前设备"摘要：机型 · 型号 DLL（状态栏里那一格）。
+        /// 注意：Assemblies[0] 恒为基类 SDK OptoFidelity.BaseTester（所有机型都一样），
+        /// 显示它等于没显示，所以这里取"非 BaseTester 的那个"= 型号 DLL，再拼上机型。
+        /// </summary>
         public string LoadedAssemblySummary
         {
             get
             {
-                if (Assemblies.Count == 0) return "";
-                var first = Assemblies[0];
-                return $"{first.Name}{(first.Version != null ? $" (v{first.Version})" : "")}";
+                if (Assemblies.Count == 0) return "(未加载)";
+
+                var model = Assemblies.FirstOrDefault(a =>
+                                string.IsNullOrEmpty(a.Name)
+                                || a.Name.IndexOf("BaseTester", StringComparison.OrdinalIgnoreCase) < 0)
+                            ?? Assemblies[0];
+
+                var version = string.IsNullOrEmpty(model.Version) ? "" : $" (v{model.Version})";
+                return string.IsNullOrWhiteSpace(_machineTypeText)
+                    ? $"{model.Name}{version}"
+                    : $"{_machineTypeText} · {model.Name}{version}";
             }
         }
 
@@ -296,6 +329,10 @@ namespace MotionApiTester.ViewModels
             // 安装 AssemblyResolve 处理器：解决 Costura 嵌入版与文件路径版的冲突
             // （BinocRainbow 嵌入的 BaseTester 在 LoadFile 上下文中被反射时找不到外部依赖）
             AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
+
+            // 解析结果一并写进实时日志：命中会写明从哪个目录取到，
+            // 未命中会列出全部搜索路径 —— 否则用户只看到 CLR 的 FileNotFoundException，无从下手
+            _dependencyResolver.OnDiagnostic = AppendLog;
 
             // 加载已保存的设置
             _themeMode = string.IsNullOrWhiteSpace(_settingsService.Settings.Theme)

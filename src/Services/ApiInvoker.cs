@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
@@ -162,6 +163,23 @@ namespace MotionApiTester.Services
                     foreach (var line in inner.StackTrace.Split('\n').Take(5))
                         EnqueueLog($"   {line.Trim()}");
                 }
+
+                // "缺运行库"和"API 自己出错"是两类问题，日志里必须分开说 ——
+                // 否则很容易被误判成接口实现有 bug，跑去改代码。
+                if (inner is FileNotFoundException || inner is FileLoadException || inner is TypeLoadException)
+                    EnqueueLog("   ⚠️ 这是设备目录缺运行库（依赖解析失败），不是该 API 本身的问题；"
+                             + "请看上方「依赖体检」一行，补齐 DLL 后重新加载设备。");
+
+                // 原生 P/Invoke 与托管依赖是两套独立机制，报错也长得不一样，必须分开说。
+                if (inner is DllNotFoundException)
+                    EnqueueLog("   ⚠️ 这是原生 DLL 找不到（P/Invoke 失败），不是该 API 本身的问题。"
+                             + "加载设备时会自动把设备目录加入原生搜索路径，"
+                             + "若仍报错请确认目标 .dll 确实在该目录下。"
+                             + "HRESULT 0x8007007E = ERROR_MOD_NOT_FOUND。");
+
+                if (inner is BadImageFormatException)
+                    EnqueueLog("   ⚠️ 位宽不匹配：该原生 DLL 是 32 位而本工具是 x64（或反之）。"
+                             + "设备目录下所有 DLL（含 LTSMC.dll）都必须是 x64 版本。");
 
                 var invokeResult = new InvokeResult
                 {

@@ -12,6 +12,13 @@ namespace MotionApiTester.ViewModels
         /// </summary>
         private void FlushLogQueue() => LogText = _logBuffer.Flush(LogText, _maxLogLines);
 
+        /// <summary>
+        /// 往实时日志面板追加一行。
+        /// 走 LogTextBuffer（无锁并发队列 + UI 定时器刷出），因此允许从任意线程调用 ——
+        /// AssemblyResolve 就完全可能发生在后台线程上。
+        /// </summary>
+        internal void AppendLog(string message) => _logBuffer.Write(message);
+
         /// <summary>导出当前日志到文件</summary>
         private void ExportLog()
         {

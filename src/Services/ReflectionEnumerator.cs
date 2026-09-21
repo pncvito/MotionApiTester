@@ -16,12 +16,11 @@ namespace MotionApiTester.Services
         {
             var info = new ApiAssembly { Path = path, Name = assembly.GetName().Name ?? "" };
 
-            // Costura 检测
-            try
-            {
-                info.IsCostura = assembly.GetTypes().Any(t => t.Namespace == "Costura");
-            }
-            catch { }
+            // Costura 检测：单查 Costura.AssemblyLoader 类型即可，不必 GetTypes() 全量枚举 ——
+            // 后者在缺依赖时会抛 ReflectionTypeLoadException，把「是否有嵌入」也一并丢掉。
+            info.IsCostura = CosturaActivator.IsCosturaPack(assembly);
+            if (info.IsCostura)
+                info.EmbeddedCount = CosturaActivator.CountEmbeddedResources(assembly);
 
             // 枚举类型（容错：每个类型 try/catch）
             IReadOnlyList<Type> types;

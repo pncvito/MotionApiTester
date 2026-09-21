@@ -24,14 +24,9 @@
                             UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
-    <Window.InputBindings>
-        <KeyBinding Key="O" Modifiers="Control" Command="{Binding LoadDeviceCommand}"/>
-        <KeyBinding Key="F5" Command="{Binding InvokeCommand}"/>
-        <KeyBinding Key="L" Modifiers="Control" Command="{Binding ClearLogCommand}"/>
-        <KeyBinding Key="H" Modifiers="Control" Command="{Binding ClearHistoryCommand}"/>
-        <KeyBinding Key="F" Modifiers="Control" Command="{Binding SearchFocusCommand}"/>
-        <KeyBinding Key="Escape" Command="{Binding SearchClearCommand}"/>
-    </Window.InputBindings>
+    <!-- 快捷键在 MainWindow.xaml.cs 的 OnPreviewKeyDown 里统一处理。
+         原先写在这儿的 KeyBinding 是 Freezable、不在可视树上，Command="{Binding ...}"
+         解析不到 Window 的 DataContext，四个键全部静默失效（见 code-behind 注释）。 -->
 
     <Window.DataContext>
         <vm:MainViewModel/>
@@ -240,38 +235,13 @@
                             <TextBlock Text="卸载"/>
                         </StackPanel>
                     </Button>
-                    <Border Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="10,0" Margin="8,0" CornerRadius="4" MinWidth="220" MaxWidth="340">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="已加载:" Foreground="Gray" Margin="0,0,6,0"/>
-                            <TextBlock Text="{Binding CurrentLoadedPath}" FontFamily="Consolas" FontSize="12" TextTrimming="CharacterEllipsis" ToolTip="{Binding CurrentLoadedPath}"/>
-                        </StackPanel>
-                    </Border>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <!-- 设备管理 -->
-                    <TextBlock Text="设备" Foreground="Gray" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11"/>
-                    <ComboBox Width="180" Height="26" Margin="0,0,4,0" VerticalContentAlignment="Center"
-                              ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
-                              DisplayMemberPath="Name"
-                              ToolTip="已登记的设备(devices.json)">
-                        <ComboBox.ItemContainerStyle>
-                            <Style TargetType="ComboBoxItem">
-                                <Setter Property="ToolTip" Value="{Binding Directory}"/>
-                            </Style>
-                        </ComboBox.ItemContainerStyle>
-                    </ComboBox>
-                    <Button Style="{StaticResource BtnBase}" Command="{Binding SwitchDeviceCommand}" Padding="8,0" ToolTip="切换到选中设备">
-                        <TextBlock Text="▶"/>
-                    </Button>
-                    <Button Style="{StaticResource BtnBase}" Command="{Binding AddDeviceCommand}" Padding="8,0" ToolTip="添加设备">
-                        <TextBlock Text="＋"/>
-                    </Button>
-                    <Button Style="{StaticResource BtnDanger}" Command="{Binding RemoveDeviceCommand}" Padding="8,0" ToolTip="移除选中设备">
-                        <TextBlock Text="✕"/>
-                    </Button>
-                    <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="8,4"/>
-                    <Border Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="0,0,0,0" Margin="0,0,8,0" CornerRadius="4" Width="240">
+                    <!-- 设备管理(切换 / 添加 / 移除)已挪进「⚙ 设置」窗口，
+                         工具栏只保留搜索与全局开关，避免顶部堆太多控件 -->
+                    <Border Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="0" Margin="0,0,8,0" CornerRadius="4"
+                            Width="240" Height="28" VerticalAlignment="Center">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
@@ -286,7 +256,7 @@
                     <Button Style="{StaticResource BtnBase}" Command="{Binding ToggleThemeCommand}" ToolTip="切换主题">
                         <TextBlock Text="🌓"/>
                     </Button>
-                    <Button Style="{StaticResource BtnBase}" Command="{Binding OpenSettingsCommand}" ToolTip="设置">
+                    <Button Style="{StaticResource BtnBase}" Command="{Binding OpenSettingsCommand}" ToolTip="设置（设备管理：切换 / 添加 / 移除 也在这里）">
                         <TextBlock Text="⚙"/>
                     </Button>
                 </StackPanel>
@@ -757,40 +727,70 @@
             </Grid>
         </Expander>
 
-        <!-- 底部状态栏(分段) -->
+        <!-- 底部状态栏(分段)：左段信息 + 右段快捷键提示。
+             原来是一个横向 StackPanel 中间垫 Width=60 的占位块 —— 那只是"顶开一点"，
+             窗口变宽时就停在中间了。改成两列 Grid：信息占 *、提示占 Auto 并靠右，
+             空间不够时由信息侧先被裁掉，提示始终贴在最右端。 -->
         <Border Grid.Row="5" Background="{DynamicResource BottomBarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,3" Grid.ColumnSpan="2">
-            <StackPanel Orientation="Horizontal">
-                <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessFgBrush}" VerticalAlignment="Center"/>
-                <TextBlock Text="就绪" Margin="6,0,0,0" FontSize="11" Foreground="Gray"/>
-                <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
-                <TextBlock Text="📦" Margin="0,0,4,0" FontSize="11"/>
-                <TextBlock Text="{Binding LoadedAssemblySummary, FallbackValue='(未加载)', TargetNullValue='(未加载)'}" FontSize="11" FontWeight="SemiBold" ToolTip="{Binding CurrentLoadedPath}"/>
-                <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
-                <TextBlock Text="{Binding TotalTypesCount, StringFormat='🔷 {0} 类型'}" FontSize="11" Foreground="Gray"/>
-                <TextBlock Text="{Binding TotalMethodsCount, StringFormat='⚙ {0} 方法'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
-                <TextBlock Text="{Binding TotalPropertiesCount, StringFormat='📋 {0} 属性'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
-                <TextBlock Text="{Binding TotalFieldsCount, StringFormat='▣ {0} 字段'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
-                <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
-                <TextBlock Text="⏱ 上次:" FontSize="11" Foreground="Gray"/>
-                <TextBlock Text="{Binding LastElapsedMs, StringFormat='{}{0}ms'}" Margin="4,0,0,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SuccessFgBrush}"/>
-                <TextBlock Width="60"/>
-                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
-                    <TextBlock Text="Ctrl+O" FontFamily="Consolas" FontSize="10"/>
-                </Border>
-                <TextBlock Text="加载" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
-                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
-                    <TextBlock Text="F5" FontFamily="Consolas" FontSize="10"/>
-                </Border>
-                <TextBlock Text="调用" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
-                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
-                    <TextBlock Text="Ctrl+L" FontFamily="Consolas" FontSize="10"/>
-                </Border>
-                <TextBlock Text="清空日志" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
-                <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
-                    <TextBlock Text="Ctrl+H" FontFamily="Consolas" FontSize="10"/>
-                </Border>
-                <TextBlock Text="清空历史" Margin="4,0,0,0" FontSize="10" Foreground="Gray"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 左段用三列：状态 / 「机型 · 型号 DLL」/ 计数。
+                     摘要单独占 * 列才能真的走 TextTrimming（横向 StackPanel 会给子元素无限宽，
+                     省略号永远不触发，只会硬裁），窄窗口下优先牺牲摘要、计数始终可见。 -->
+                <Grid Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessFgBrush}" VerticalAlignment="Center"/>
+                        <TextBlock Text="就绪" Margin="6,0,0,0" FontSize="11" Foreground="Gray"/>
+                        <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
+                        <TextBlock Text="📦" Margin="0,0,4,0" FontSize="11"/>
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                               Text="{Binding LoadedAssemblySummary, FallbackValue='(未加载)', TargetNullValue='(未加载)'}"
+                               FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding CurrentLoadedPath}"/>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
+                        <TextBlock Text="{Binding TotalTypesCount, StringFormat='🔷 {0} 类型'}" FontSize="11" Foreground="Gray"/>
+                        <TextBlock Text="{Binding TotalMethodsCount, StringFormat='⚙ {0} 方法'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
+                        <TextBlock Text="{Binding TotalPropertiesCount, StringFormat='📋 {0} 属性'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
+                        <TextBlock Text="{Binding TotalFieldsCount, StringFormat='▣ {0} 字段'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
+                        <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
+                        <TextBlock Text="⏱ 上次:" FontSize="11" Foreground="Gray"/>
+                        <TextBlock Text="{Binding LastElapsedMs, StringFormat='{}{0}ms'}" Margin="4,0,0,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SuccessFgBrush}"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
+                        <TextBlock Text="Ctrl+O" FontFamily="Consolas" FontSize="10"/>
+                    </Border>
+                    <TextBlock Text="加载" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
+                    <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
+                        <TextBlock Text="F5" FontFamily="Consolas" FontSize="10"/>
+                    </Border>
+                    <TextBlock Text="调用" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
+                    <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
+                        <TextBlock Text="Ctrl+L" FontFamily="Consolas" FontSize="10"/>
+                    </Border>
+                    <TextBlock Text="清空日志" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
+                    <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
+                        <TextBlock Text="Ctrl+H" FontFamily="Consolas" FontSize="10"/>
+                    </Border>
+                    <TextBlock Text="清空历史" Margin="4,0,0,0" FontSize="10" Foreground="Gray"/>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

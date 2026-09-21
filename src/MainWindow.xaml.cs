@@ -342,23 +342,26 @@ namespace MotionApiTester
         private void MenuExpandAll_Click(object sender, RoutedEventArgs e) => SetTreeExpansion(true);
         private void MenuCollapseAll_Click(object sender, RoutedEventArgs e) => SetTreeExpansion(false);
 
+        /// <summary>
+        /// 展开 / 折叠所有节点。
+        ///
+        /// <para>改走<b>数据</b>：<c>TreeNodeVm.IsExpanded</c> 已绑定到 <c>TreeViewItem.IsExpanded</c>
+        /// （见 MainWindow.xaml 的隐式样式）。旧写法用 ItemContainerGenerator 从容器上递归 ——
+        /// 树开了虚拟化，折叠子树下的节点根本没实化，取不到容器，实际只能展开一两层，
+        /// 表现就是"点了展开所有却几乎没反应"。</para>
+        /// </summary>
         private void SetTreeExpansion(bool expand)
         {
-            foreach (var item in TvApi.Items)
-            {
-                if (TvApi.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem tvi)
-                    SetExpansion(tvi, expand);
-            }
+            var vm = Vm;
+            if (vm == null) return;
+
+            foreach (var root in vm.FilteredTreeRoots) SetExpansion(root, expand);
         }
 
-        private static void SetExpansion(TreeViewItem item, bool expand)
+        private static void SetExpansion(TreeNodeVm node, bool expand)
         {
-            item.IsExpanded = expand;
-            foreach (var child in item.Items)
-            {
-                if (item.ItemContainerGenerator.ContainerFromItem(child) is TreeViewItem tvi)
-                    SetExpansion(tvi, expand);
-            }
+            node.IsExpanded = expand;
+            foreach (var child in node.Children) SetExpansion(child, expand);
         }
 
         private void BtnCopySignature_Click(object sender, RoutedEventArgs e)

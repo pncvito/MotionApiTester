@@ -52,7 +52,6 @@ namespace MotionApiTester.Services
         public int LogRetentionLines { get; set; } = 5000;
         public int InvokeTimeoutSeconds { get; set; } = 30;
         public string ExportFormat { get; set; } = "txt";
-        public List<string> RecentDirectories { get; set; } = new List<string>();
         /// <summary>设备 DLL 目录。留空表示自动探测（见 DeviceDirectoryResolver）</summary>
         public string DefaultDeviceDirectory { get; set; } = "";
 

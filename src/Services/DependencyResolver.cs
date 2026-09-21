@@ -14,7 +14,13 @@ namespace MotionApiTester.Services
     ///
     /// 典型场景：BinocRainbow 用 Costura 嵌入了 BaseTester，当它内部类型被反射时，
     /// CLR 在 LoadFile 上下文里找不到 BaseTester 的文件路径版 → FileNotFoundException。
-    /// 这里按"已登记的字节缓存 → 搜索路径"顺序返回程序集。
+    /// 这里按"已登记的实例 → 搜索路径"顺序返回程序集。
+    ///
+    /// <para><b>⚠️ 必须返回同一个 Assembly 实例，不能返回"内容相同的另一份"：</b>
+    /// .NET Framework 的 <c>Assembly.Load(byte[])</c> <b>不会去重</b> —— 同一份字节加载两次
+    /// 会得到两个程序集，连里面的类型对象都不相等（实测）。于是调用方拿到的那份，
+    /// 与其自身继承链上解析出来的基类变成两个 Type，<c>IsAssignableFrom</c> 恒为 false，
+    /// 且每份副本都永远无法卸载。所以这里缓存的是 <see cref="Assembly"/> 实例本身。</para>
     ///
     /// 搜索路径全部在运行时推导，代码里不写死任何开发机绝对路径；
     /// 额外的私有依赖目录请通过 settings.json 的 ExtraDependencySearchPaths 配置。
@@ -24,8 +30,14 @@ namespace MotionApiTester.Services
     /// </summary>
     public class DependencyResolver
     {
-        private readonly Dictionary<string, byte[]> _byteCache = new Dictionary<string, byte[]>();
+        /// <summary>简名 → 程序集实例（不是字节：见类注释，重复 Load 会造出身份不同的副本）</summary>
+        private readonly Dictionary<string, Assembly> _assemblyCache =
+            new Dictionary<string, Assembly>(StringComparer.OrdinalIgnoreCase);
+
         private readonly List<string> _searchPaths = new List<string>();
+
+        /// <summary>当前设备目录（切换设备时要把上一台从搜索路径里摘掉，见 SetDeviceDirectory）</summary>
+        private string _deviceDirectory;
 
         /// <summary>
         /// 已成功激活 Costura 的宿主程序集（机型 DLL）。
@@ -84,11 +96,19 @@ namespace MotionApiTester.Services
         /// <summary>
         /// 登记设备目录并提到最高优先级。
         /// 加载设备后调用，让机型 DLL 的依赖能优先在同目录解析。
+        ///
+        /// <para>⚠️ 必须同时摘掉<b>上一台</b>设备的目录：否则切换设备后旧目录仍留在搜索链上，
+        /// 新设备缺少的依赖会被旧设备目录里的同名 DLL 顶上 —— 加载到错版本的二进制，
+        /// 而且日志上看不出任何异常。</para>
         /// </summary>
         public void SetDeviceDirectory(string directory)
         {
             if (string.IsNullOrWhiteSpace(directory)) return;
 
+            if (!string.IsNullOrEmpty(_deviceDirectory) && _deviceDirectory != directory)
+                _searchPaths.Remove(_deviceDirectory);
+
+            _deviceDirectory = directory;
             _searchPaths.Remove(directory);
             _searchPaths.Insert(0, directory);
         }
@@ -101,11 +121,16 @@ namespace MotionApiTester.Services
             _searchPaths.Add(directory);
         }
 
-        /// <summary>登记 DLL 字节：加载设备时先 ReadAllBytes，后续解析直接复用，避免再次读盘</summary>
-        public void Register(string simpleName, byte[] bytes)
+        /// <summary>
+        /// 登记一个**已经加载好的**程序集实例，后续 AssemblyResolve 命中时原样交回它。
+        ///
+        /// <para>调用方必须先 <c>Assembly.Load(File.ReadAllBytes(...))</c> 一次拿到实例再登记 ——
+        /// 不要在解析时才按字节加载（那样每次都会造出一份身份不同的副本，见类注释）。</para>
+        /// </summary>
+        public void Register(string simpleName, Assembly assembly)
         {
-            if (string.IsNullOrEmpty(simpleName) || bytes == null) return;
-            _byteCache[simpleName] = bytes;
+            if (string.IsNullOrEmpty(simpleName) || assembly == null) return;
+            _assemblyCache[simpleName] = assembly;
         }
 
         /// <summary>
@@ -120,10 +145,10 @@ namespace MotionApiTester.Services
             _embeddedProviders.Add(host);
         }
 
-        /// <summary>清空字节缓存、嵌入宿主与已报告记录（卸载 / 切换设备时调用）</summary>
+        /// <summary>清空实例登记、嵌入宿主与已报告记录（卸载 / 切换设备时调用）</summary>
         public void Clear()
         {
-            _byteCache.Clear();
+            _assemblyCache.Clear();
             _embeddedProviders.Clear();
             lock (_reportGate)
             {
@@ -144,20 +169,23 @@ namespace MotionApiTester.Services
 
             try
             {
-                // 1. 加载时登记的字节缓存
-                if (_byteCache.TryGetValue(simpleName, out var bytes))
+                // 1. 已登记的实例 —— 原样交回**同一个** Assembly（绝不能在这里再 Load 一次）
+                if (_assemblyCache.TryGetValue(simpleName, out var known) && known != null)
                 {
-                    var fromBytes = Assembly.Load(bytes);
-                    ReportOnce($"HIT:{simpleName}", $"✓ 依赖解析 {simpleName} → 已登记的字节缓存");
-                    return fromBytes;
+                    ReportOnce($"HIT:{simpleName}", $"✓ 依赖解析 {simpleName} → 已登记的实例");
+                    return known;
                 }
 
-                // 2. 依次尝试各搜索路径
+                // 2. 依次尝试各搜索路径。
+                //    LoadFrom 上下文按标识复用同一个实例（不会像 Load(byte[]) 那样造副本），
+                //    顺手记进缓存，后续同名请求直接命中，也顺便保证身份稳定。
                 var path = LocateFile(simpleName);
                 if (path != null)
                 {
+                    var loaded = Assembly.LoadFrom(path);
+                    _assemblyCache[simpleName] = loaded;
                     ReportOnce($"HIT:{simpleName}", $"✓ 依赖解析 {simpleName} → {path}");
-                    return Assembly.LoadFrom(path);
+                    return loaded;
                 }
 
                 // 3. 解析不到 —— ⚠️ 这里**不能**立刻喊"依赖缺失"：AssemblyResolve 是多播事件，
@@ -216,8 +244,8 @@ namespace MotionApiTester.Services
                     if (resolved.Contains(name) || fromEmbedded.Contains(name)
                         || onDemand.Contains(name) || missing.Contains(name)) continue;
 
-                    // ① 字节缓存 / 已在本进程
-                    if (_byteCache.ContainsKey(name) || IsLoadedInProcess(name))
+                    // ① 已登记的实例 / 已在本进程
+                    if (_assemblyCache.ContainsKey(name) || IsLoadedInProcess(name))
                     {
                         resolved.Add(name);
                         continue;

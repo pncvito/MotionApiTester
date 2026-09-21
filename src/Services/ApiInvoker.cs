@@ -40,6 +40,14 @@ namespace MotionApiTester.Services
         /// <summary>状态变化回调（用于 UI 进度反馈）</summary>
         public Action<string> OnStatusChanged { get; set; }
 
+        /// <summary>
+        /// 单次调用的等待上限（秒），来自设置里的"调用超时"；0 或负数表示不限。
+        ///
+        /// <para>⚠️ 它只能让<b>界面</b>不再干等，无法中断设备侧：
+        /// <see cref="MethodBase.Invoke"/> 是同步阻塞调用，CLR 层面没有取消手段。</para>
+        /// </summary>
+        public int TimeoutSeconds { get; set; }
+
         /// <param name="log">日志出口，由 UI 层提供缓冲（见 LogTextBuffer）</param>
         public ApiInvoker(Dispatcher dispatcher, LogTextBuffer log)
         {
@@ -154,9 +162,45 @@ namespace MotionApiTester.Services
                     EnqueueLog($"✓ 实例就绪 {instance?.GetType().FullName ?? "(null)"}");
                 }
 
-                // 4. 实际反射调用
-                var rawResult = await Task.Run(() => target.Invoke(instance, parameters), token);
+                // 4. 实际反射调用（只对"设备侧执行"这一段计时等待）
+                object rawResult;
+                var invokeTask = Task.Run(() => target.Invoke(instance, parameters), token);
+
+                if (TimeoutSeconds > 0)
+                {
+                    var finished = await Task.WhenAny(
+                        invokeTask, Task.Delay(TimeSpan.FromSeconds(TimeoutSeconds))).ConfigureAwait(false);
+
+                    if (finished != invokeTask)
+                    {
+                        // ⚠️ 只是不再等它 —— 设备侧的指令已经在跑，CLR 无法中断。
+                        //    这里必须说清楚，否则用户以为"超时 = 已放弃"，接着重复下发动作指令会撞车。
+                        ObserveFault(invokeTask);
+                        sw.Stop();
+
+                        var timeoutMsg = $"调用超时（超过 {TimeoutSeconds} 秒未返回）。"
+                                       + "注意：设备侧的指令无法中断，它仍在后台执行；"
+                                       + "请不要重复下发动作指令，等它跑完或重启本工具。";
+                        EnqueueLog($"⏱ {timeoutMsg}");
+
+                        var timeoutResult = new InvokeResult
+                        {
+                            Success = false,
+                            ElapsedMs = sw.ElapsedMilliseconds,
+                            Message = timeoutMsg
+                        };
+                        Post(() => OnCompleted?.Invoke(method, timeoutResult, instance));
+                        OnStatusChanged?.Invoke($"⏱ {method.Name} 调用超时（{TimeoutSeconds}s）");
+                        return timeoutResult;
+                    }
+                }
+
+                rawResult = await invokeTask;
                 sw.Stop();
+
+                // out / ref 参数的回填值（设备 API 大量用它传结果，不显示等于白传）
+                var byRefText = DescribeByRefParameters(paramInfos, parameters);
+                if (byRefText != null) EnqueueLog($"  输出参数: {byRefText}");
 
                 // 5. 设备侧"自报失败"：OptoFidelity 的 API 普遍把失败包在返回值里
                 //    （典型签名 (bool ok, string message)），内部 catch 掉异常后
@@ -179,7 +223,7 @@ namespace MotionApiTester.Services
                         Success = false,
                         ElapsedMs = sw.ElapsedMilliseconds,
                         ReturnValue = rawResult,
-                        Message = $"API 返回失败: {failMsg}"
+                        Message = $"API 返回失败: {failMsg}" + (byRefText != null ? $"  [输出参数] {byRefText}" : "")
                     };
                     Post(() => OnCompleted?.Invoke(method, failedResult, instance));
                     OnStatusChanged?.Invoke($"❌ {method.Name} → API 返回失败: {failMsg}");
@@ -191,7 +235,7 @@ namespace MotionApiTester.Services
                     Success = true,
                     ElapsedMs = sw.ElapsedMilliseconds,
                     ReturnValue = rawResult,
-                    Message = FormatResult(rawResult)
+                    Message = FormatResult(rawResult) + (byRefText != null ? $"  [输出参数] {byRefText}" : "")
                 };
 
                 EnqueueLog($"✅ 调用成功 ({sw.ElapsedMilliseconds}ms)");
@@ -316,9 +360,20 @@ namespace MotionApiTester.Services
                 }
                 else if (pm != null && pm.PassNull)
                 {
-                    // 用户勾选"传 null"
-                    parameters[i] = null;
-                    EnqueueLog($"  参数 {pi.Name} = null（用户勾选）");
+                    // 用户勾选"传 null"。
+                    // ⚠️ out/ref 且元素是值类型时不能传 null（反射调用直接抛 ArgumentException，
+                    //    报"对象与目标类型不匹配"），这种参数退回该值类型的默认值。
+                    var nullTarget = ElementTypeOf(pi.ParameterType);
+                    if (pi.ParameterType.IsByRef && nullTarget.IsValueType)
+                    {
+                        parameters[i] = GetTypeDefault(nullTarget);
+                        EnqueueLog($"  参数 {pi.Name} = {parameters[i]}（out/ref 值类型不能传 null，已改用默认值）");
+                    }
+                    else
+                    {
+                        parameters[i] = null;
+                        EnqueueLog($"  参数 {pi.Name} = null（用户勾选）");
+                    }
                 }
                 else if (string.IsNullOrEmpty(pm?.Value))
                 {
@@ -330,14 +385,25 @@ namespace MotionApiTester.Services
                     }
                     else
                     {
-                        parameters[i] = GetTypeDefault(pi.ParameterType);
+                        parameters[i] = GetDefaultForParameter(pi);
                         EnqueueLog($"  参数 {pi.Name} 为空，使用类型默认值: {parameters[i] ?? "null"}");
                     }
                 }
                 else
                 {
-                    parameters[i] = ConvertValue(pm.Value, pi.ParameterType);
-                    EnqueueLog($"  参数 {pi.Name} = {pm.Value} ({pi.ParameterType.Name})");
+                    // ByRef 参数按元素类型转换（ParameterType 是 "Double[]&" 这种，直接转必失败）。
+                    var targetType = ElementTypeOf(pi.ParameterType);
+                    var converted = ConvertValue(pm.Value, targetType, out bool ok);
+                    parameters[i] = converted;
+
+                    if (ok)
+                        // ⚠️ 打印的是**实际传进去的值**，不是用户输入的原文 ——
+                        //    以前打原文，转换失败时日志里看着像"已经传了 a,b"，
+                        //    实际传的是 null，排查时会被这句日志带着走。
+                        EnqueueLog($"  参数 {pi.Name} = {FormatResult(converted)} ({targetType.Name})");
+                    else
+                        EnqueueLog($"  ⚠️ 参数 {pi.Name} 转换失败：\"{pm.Value}\" 不是合法的 {targetType.Name}，"
+                                 + $"已按 {FormatResult(converted)} 传入");
                 }
             }
 
@@ -357,7 +423,17 @@ namespace MotionApiTester.Services
                 }
 
                 for (int i = 0; i < elements.Length; i++)
-                    parameters[i] = ConvertJsonValue(elements[i], paramInfos[i].ParameterType);
+                {
+                    var pi = paramInfos[i];
+                    parameters[i] = ConvertJsonValue(elements[i], pi.ParameterType, out bool converted);
+
+                    // 静默变 null 曾是这里最坑的地方：数组 / 对象以前一律被丢成 null，
+                    // 日志却写着"已应用 JSON 参数"，用户只能看到设备侧莫名其妙的失败。
+                    if (!converted)
+                        EnqueueLog($"  ⚠️ 第 {i + 1} 个参数 {pi.Name}（{ElementTypeOf(pi.ParameterType).Name}）"
+                                 + $"无法从 {DescribeJsonKind(elements[i].ValueKind)} 转换，"
+                                 + $"已按 {FormatResult(parameters[i])} 传入");
+                }
 
                 EnqueueLog($"✓ 已应用 JSON 参数（{elements.Length} 个）");
                 return true;
@@ -369,42 +445,123 @@ namespace MotionApiTester.Services
             }
         }
 
-        /// <summary>JSON 值 → 目标类型（复杂对象暂不支持，回退为类型默认值）</summary>
+        /// <summary>JSON 值 → 目标类型</summary>
         private static object ConvertJsonValue(JsonElement element, Type targetType)
+            => ConvertJsonValue(element, targetType, out _);
+
+        /// <summary>
+        /// JSON 值 → 目标类型。转不出来时 <paramref name="ok"/> 为 false 并返回类型默认值 ——
+        /// 调用方据此明确报一条警告，不再"悄悄地给个 null 就完事"。
+        /// </summary>
+        private static object ConvertJsonValue(JsonElement element, Type targetType, out bool ok)
         {
+            ok = true;
+            targetType = ElementTypeOf(targetType);
+
             switch (element.ValueKind)
             {
                 case JsonValueKind.Null:
                     return GetTypeDefault(targetType);
 
+                case JsonValueKind.Array:
+                    return ConvertJsonArray(element, targetType, out ok);
+
+                case JsonValueKind.Object:
+                    // 复杂对象（POCO）还没有映射规则 —— 明确算失败，而不是悄悄给 null
+                    ok = false;
+                    return GetTypeDefault(targetType);
+
                 case JsonValueKind.String:
-                    return targetType == typeof(string)
-                        ? (object)element.GetString()
-                        : ConvertValue(element.GetString(), targetType);
+                    if (targetType == typeof(string)) return element.GetString();
+                    return ConvertValue(element.GetString(), targetType, out ok);
 
                 case JsonValueKind.Number:
-                    return ConvertValue(element.GetRawText(), targetType);
+                    return ConvertValue(element.GetRawText(), targetType, out ok);
 
                 case JsonValueKind.True:
                 case JsonValueKind.False:
-                    return targetType == typeof(bool)
-                        ? (object)element.GetBoolean()
-                        : ConvertValue(element.ToString(), targetType);
+                    if (targetType == typeof(bool)) return element.GetBoolean();
+                    return ConvertValue(element.ToString(), targetType, out ok);
 
                 default:
+                    ok = false;
                     return GetTypeDefault(targetType);
+            }
+        }
+
+        /// <summary>JSON 数组 → 目标数组，逐元素递归转换（double[] / string[] / int[] …）</summary>
+        private static object ConvertJsonArray(JsonElement element, Type targetType, out bool ok)
+        {
+            if (targetType == null || !targetType.IsArray)
+            {
+                ok = false;
+                return GetTypeDefault(targetType);
+            }
+
+            var elementType = targetType.GetElementType();
+            var items = new List<JsonElement>();
+            foreach (var item in element.EnumerateArray()) items.Add(item);
+
+            var array = Array.CreateInstance(elementType, items.Count);
+            ok = true;
+            for (int i = 0; i < items.Count; i++)
+            {
+                array.SetValue(ConvertJsonValue(items[i], elementType, out bool itemOk), i);
+                if (!itemOk) ok = false;
+            }
+            return array;
+        }
+
+        /// <summary>JSON 值种类的中文说明（写日志用）</summary>
+        private static string DescribeJsonKind(JsonValueKind kind)
+        {
+            switch (kind)
+            {
+                case JsonValueKind.Array: return "JSON 数组";
+                case JsonValueKind.Object: return "JSON 对象";
+                case JsonValueKind.String: return "JSON 字符串";
+                case JsonValueKind.Number: return "JSON 数字";
+                case JsonValueKind.True:
+                case JsonValueKind.False: return "JSON 布尔";
+                default: return kind.ToString();
             }
         }
 
         /// <summary>将字符串转换为目标类型</summary>
         private static object ConvertValue(string raw, Type targetType)
+            => ConvertValue(raw, targetType, out _);
+
+        /// <summary>
+        /// 将字符串转换为目标类型；转换失败时 <paramref name="ok"/> 为 false 并返回类型默认值（不抛异常）。
+        ///
+        /// <para>数组用逗号或分号分隔，如 <c>Double[]</c> 填 <c>1.2, 3.4</c> ——
+        /// 设备 API 里 <c>string[]</c> / <c>double[]</c> 参数很常见，
+        /// 以前一律转换失败变 null，日志还照打"参数 x = 原文"。</para>
+        /// </summary>
+        private static object ConvertValue(string raw, Type targetType, out bool ok)
         {
+            ok = true;
+            targetType = ElementTypeOf(targetType);
+
             if (targetType == typeof(string)) return raw;
             if (string.IsNullOrEmpty(raw))
                 return GetTypeDefault(targetType);
 
             try
             {
+                if (targetType.IsArray)
+                {
+                    var elementType = targetType.GetElementType();
+                    var parts = raw.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
+                    var array = Array.CreateInstance(elementType, parts.Length);
+                    for (int i = 0; i < parts.Length; i++)
+                    {
+                        array.SetValue(ConvertValue(parts[i].Trim(), elementType, out bool itemOk), i);
+                        if (!itemOk) ok = false;
+                    }
+                    return array;
+                }
+
                 if (targetType.IsEnum)
                     return Enum.Parse(targetType, raw, ignoreCase: true);
 
@@ -423,7 +580,8 @@ namespace MotionApiTester.Services
             }
             catch
             {
-                // 转换失败，返回类型默认值
+                // 转换失败，返回类型默认值（调用方据 ok 决定要不要提示）
+                ok = false;
                 return GetTypeDefault(targetType);
             }
         }
@@ -431,9 +589,54 @@ namespace MotionApiTester.Services
         /// <summary>获取类型默认值</summary>
         private static object GetTypeDefault(Type type)
         {
+            if (type == null) return null;
             if (type == typeof(string)) return "";
             if (type.IsValueType) return Activator.CreateInstance(type);
             return null;
+        }
+
+        /// <summary>ByRef（out / ref）类型取其元素类型；其它类型原样返回</summary>
+        private static Type ElementTypeOf(Type type)
+        {
+            if (type == null) return null;
+            return type.IsByRef ? type.GetElementType() : type;
+        }
+
+        /// <summary>
+        /// 参数的"类型默认值"。
+        /// ⚠️ ByRef 参数必须按<b>元素类型</b>取：直接对 <c>Boolean&amp;</c> 取默认会得到 null，
+        /// 而 out 值类型参数不允许传 null，反射调用会直接抛 ArgumentException（"对象与目标类型不匹配"）。
+        /// </summary>
+        private static object GetDefaultForParameter(ParameterInfo pi)
+            => GetTypeDefault(ElementTypeOf(pi.ParameterType));
+
+        /// <summary>
+        /// 把 out / ref 参数的回填值整理成一行文本；没有这类参数时返回 null。
+        ///
+        /// <para>设备 API 大量用 <c>out</c> 传结果 —— <c>ReadDi(int, out bool, logger)</c>、
+        /// <c>FixtureMoveToPupilPosition(…, out Double[] rxDutOffset, …)</c>。
+        /// 不显示出来的话这些参数等于白传：界面只报"调用成功"，用户拿不到任何结果。</para>
+        /// </summary>
+        private static string DescribeByRefParameters(ParameterInfo[] paramInfos, object[] parameters)
+        {
+            List<string> parts = null;
+            for (int i = 0; i < paramInfos.Length && i < parameters.Length; i++)
+            {
+                if (!paramInfos[i].ParameterType.IsByRef) continue;
+
+                parts = parts ?? new List<string>();
+                parts.Add($"{paramInfos[i].Name} = {FormatResult(parameters[i])}");
+            }
+            return parts == null ? null : string.Join("; ", parts);
+        }
+
+        /// <summary>
+        /// 观察被放弃任务的异常。超时后我们把 invokeTask 丢下不管，
+        /// 若它随后以异常收尾，未观察异常会在 GC 时冒成 UnobservedTaskException。
+        /// </summary>
+        private static void ObserveFault(Task task)
+        {
+            task.ContinueWith(t => { var ignored = t.Exception; }, TaskContinuationOptions.OnlyOnFaulted);
         }
 
         // ============== 实例解析 ==============
@@ -619,8 +822,8 @@ namespace MotionApiTester.Services
                  + "请先调用该类型的初始化方法再重试；这与「依赖缺失」无关。";
         }
 
-        /// <summary>格式化返回值</summary>
-        private static string FormatResult(object result)
+        /// <summary>格式化返回值（数组 / 集合打成 "[N 项] a, b, c"；同程序集内可复用）</summary>
+        internal static string FormatResult(object result)
         {
             if (result == null) return "(null)";
             if (result is string s) return $"\"{s}\"";

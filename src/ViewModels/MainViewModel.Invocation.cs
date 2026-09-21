@@ -11,10 +11,22 @@ namespace MotionApiTester.ViewModels
     /// <summary>调用分发、选中态同步、调用历史。</summary>
     public partial class MainViewModel
     {
+        /// <summary>
+        /// 写入调用历史（界面集合 + 磁盘）。方法与属性/字段读取共用 ——
+        /// 属性/字段以前不记录，历史面板里只有方法，与"按一下键就调用"的实际操作对不上。
+        /// </summary>
+        private void RecordHistory(CallHistoryItem item)
+        {
+            _historyService.Record(item);
+            _historyItems.Insert(0, item);
+            if (_historyItems.Count > 200) _historyItems.RemoveAt(_historyItems.Count - 1);
+            _historyService.Save();
+        }
+
         /// <summary>构造函数的调用完成回调：写历史 + 刷新结构化结果字段</summary>
         private void OnInvocationCompleted(ApiMethod method, InvokeResult result, object instance)
         {
-            var item = new CallHistoryItem
+            RecordHistory(new CallHistoryItem
             {
                 MethodName = method.FullName,
                 Parameters = string.Join(", ", method.Parameters.Select(p =>
@@ -23,11 +35,7 @@ namespace MotionApiTester.ViewModels
                 ElapsedMs = result.ElapsedMs,
                 Success = result.Success,
                 Timestamp = DateTime.Now
-            };
-            _historyService.Record(item);
-            _historyItems.Insert(0, item);
-            if (_historyItems.Count > 200) _historyItems.RemoveAt(_historyItems.Count - 1);
-            _historyService.Save();
+            });
 
             LastElapsedMs = result.ElapsedMs;
             LastCallTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
@@ -84,9 +92,9 @@ namespace MotionApiTester.ViewModels
                 {
                     var pi = prop.PropertyInfo;
                     var value = await ReadMemberAsync(pi.DeclaringType, prop.IsStatic, inst => pi.GetValue(inst));
-                    ReportMemberReadSuccess("属性", prop.Name, value, pi.PropertyType, pi.DeclaringType);
+                    ReportMemberReadSuccess("属性", prop.Name, value, pi.PropertyType, pi.DeclaringType, prop.IsStatic);
                 }
-                catch (Exception ex) { ReportMemberReadFailure("属性", prop.Name, ex); }
+                catch (Exception ex) { ReportMemberReadFailure("属性", prop.Name, prop.PropertyInfo, ex); }
                 finally { IsInvoking = false; }
                 return;
             }
@@ -100,9 +108,9 @@ namespace MotionApiTester.ViewModels
                 {
                     var fi = field.FieldInfo;
                     var value = await ReadMemberAsync(fi.DeclaringType, field.IsStatic, inst => fi.GetValue(inst));
-                    ReportMemberReadSuccess("字段", field.Name, value, fi.FieldType, fi.DeclaringType);
+                    ReportMemberReadSuccess("字段", field.Name, value, fi.FieldType, fi.DeclaringType, fi.IsStatic);
                 }
-                catch (Exception ex) { ReportMemberReadFailure("字段", field.Name, ex); }
+                catch (Exception ex) { ReportMemberReadFailure("字段", field.Name, field.FieldInfo, ex); }
                 finally { IsInvoking = false; }
                 return;
             }
@@ -126,28 +134,53 @@ namespace MotionApiTester.ViewModels
             return value;
         }
 
-        private void ReportMemberReadSuccess(string kind, string name, object value, Type valueType, Type declaringType)
+        private void ReportMemberReadSuccess(string kind, string name, object value,
+                                              Type valueType, Type declaringType, bool isStatic)
         {
-            var text = value?.ToString() ?? "(null)";
+            // 复用 ApiInvoker 的格式化：数组 / 集合会打成 "[3 项] 1.2, 3.4, 5.6"，而不是 "System.Double[]"
+            var text = ApiInvoker.FormatResult(value);
+            var member = $"{declaringType?.Name ?? "?"}.{name}{(isStatic ? " (static)" : "")}";
 
             ResultSuccessFlag = true;
             ResultReturnValue = text;
             ResultReturnType = valueType?.FullName ?? "—";
             ResultInstanceType = declaringType?.FullName ?? "—";
             ResultThread = "Background (Task.Run)";
-            ResultFullMessage = $"{kind} {name} = {text}";
-            ResultText = $"✅ {kind} {name} ({LastElapsedMs}ms)\n{ResultFullMessage}";
+            ResultFullMessage = $"{kind} {member} = {text}";
+            ResultText = $"✅ {kind} {member} ({LastElapsedMs}ms)\n{ResultFullMessage}";
             StatusText = $"✅ {name} = {text}";
+
+            RecordHistory(new CallHistoryItem
+            {
+                MethodName = member,
+                Parameters = $"{kind}读取",
+                Result = text,
+                ElapsedMs = LastElapsedMs,
+                Success = true,
+                Timestamp = DateTime.Now
+            });
         }
 
-        private void ReportMemberReadFailure(string kind, string name, Exception ex)
+        private void ReportMemberReadFailure(string kind, string name, MemberInfo memberInfo, Exception ex)
         {
             var inner = (ex as TargetInvocationException)?.InnerException ?? ex;
+            var member = $"{memberInfo?.DeclaringType?.Name ?? "?"}.{name}";
 
             ResultSuccessFlag = false;
             ResultFullMessage = $"{inner.GetType().Name}: {inner.Message}";
-            ResultText = $"❌ {kind} {name}\n{ResultFullMessage}";
+            ResultText = $"❌ {kind} {member}\n{ResultFullMessage}";
             StatusText = $"❌ {kind}读取异常: {inner.Message}";
+
+            // 失败也记 —— 只有成功的记录会让历史看起来"怎么调都顺"
+            RecordHistory(new CallHistoryItem
+            {
+                MethodName = member,
+                Parameters = $"{kind}读取",
+                Result = ResultFullMessage,
+                ElapsedMs = LastElapsedMs,
+                Success = false,
+                Timestamp = DateTime.Now
+            });
         }
 
         /// <summary>选中节点后，更新 SelectedMethod / SelectedProperty / SelectedField / 签名 / 依赖项</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -123,6 +124,17 @@ namespace MotionApiTester.ViewModels
             NotifyAssemblyStats();
             StatusText = $"🔍 扫描目录: {deviceDir}";
 
+            // 目录可能已经被删掉或改名（settings.json 里存的是旧路径、U 盘拔了……）：
+            // 不拦的话 Directory.GetFiles 会抛 DirectoryNotFoundException，
+            // 一路冒到全局兜底，界面上只留下一个半清空的状态。
+            if (!Directory.Exists(deviceDir))
+            {
+                IsLoaded = false;
+                StatusText = $"❌ 设备目录不存在: {deviceDir}";
+                AppendLog($"❌ 加载中止：目录不存在 {deviceDir}");
+                return;
+            }
+
             // ⚠️ 必须清掉上一轮的字节缓存与**嵌入宿主**登记。
             //    否则上一台设备的 Costura 宿主还挂在体检的"能供出依赖"名单里，
             //    换成一台真正缺依赖的设备时会误报成"全部可解析"。
@@ -146,15 +158,37 @@ namespace MotionApiTester.ViewModels
             }
 
             // ③ 匹配机型 DLL
+            var candidates = scanResult.CandidateModelDlls;
             string modelDll = null;
+
             if (machineType != null)
-                modelDll = MachineTypeMatcher.FindBestMatch(machineType, scanResult.CandidateModelDlls);
-            else if (scanResult.CandidateModelDlls.Count == 1)
-                modelDll = scanResult.CandidateModelDlls[0];
+            {
+                modelDll = MachineTypeMatcher.FindBestMatch(machineType, candidates);
+
+                // 相似度为 0 时 FindBestMatch 返回 null（不再"随便挑第一个"）。
+                // 但目录里只有唯一候选的话，那就是它 —— 不能因为机型字符串对不上就把目录判死。
+                if (modelDll == null && candidates.Count == 1)
+                {
+                    modelDll = candidates[0];
+                    AppendLog($"⚠️ 机型字符串「{machineType}」与 {modelDll} 的相似度为 0，"
+                            + "但目录里只有这一个候选机型 DLL，按它加载。");
+                }
+            }
+            else if (candidates.Count == 1)
+            {
+                modelDll = candidates[0];
+            }
 
             if (modelDll == null)
             {
-                StatusText = $"❌ 无法匹配机型 DLL。MachineType={machineType ?? "(无)"}，候选: {string.Join(", ", scanResult.CandidateModelDlls)}";
+                // 别只说"匹配不上"：把相似度排名摊开，并指明改从哪里指定，
+                // 否则用户看不出是 MachineType.json 写错了还是目录里放错了 DLL。
+                StatusText = $"❌ 无法匹配机型 DLL（MachineType=「{machineType ?? "(无)"}」，候选 {candidates.Count} 个）";
+                AppendLog($"❌ 无法匹配机型 DLL。MachineType.json = 「{machineType ?? "(无)"}」，候选 {candidates.Count} 个：");
+                foreach (var (dll, similarity) in MachineTypeMatcher.RankMatches(machineType ?? "", candidates))
+                    AppendLog($"     {similarity:P0}  {dll}");
+                AppendLog("   处理：到「设置 → 设备 → ＋ 添加」用向导手动指定机型 DLL；"
+                        + "或检查 MachineType.json 的内容是否与机型 DLL 文件名对应。");
                 return;
             }
 
@@ -196,11 +230,14 @@ namespace MotionApiTester.ViewModels
             //    完全独立的机制，谁都不会替谁兜底。
             NativeSearchPath.SetDeviceDirectory(deviceDir, AppendLog);
 
-            // 先登记两个 DLL 的字节，后续 AssemblyResolve 命中缓存即可直接返回
+            // 取简名只读元数据（AssemblyName.GetAssemblyName 不加载程序集）。
+            // ⚠️ 别为了取名去 Assembly.Load：那会立刻留下第二份永不卸载的副本
+            //    （实测 4.95MB 的机型 DLL 每次加载都会多一份），加载只做下面那一次。
+            var baseName = AssemblyName.GetAssemblyName(baseDll).Name;
+            var modelName = AssemblyName.GetAssemblyName(modelPath).Name;
+
             var baseBytes = File.ReadAllBytes(baseDll);
             var modelBytes = File.ReadAllBytes(modelPath);
-            _dependencyResolver.Register(Assembly.Load(baseBytes).GetName().Name, baseBytes);
-            _dependencyResolver.Register(Assembly.Load(modelBytes).GetName().Name, modelBytes);
 
             // ⑤ 反射枚举（从 byte[] 加载，避免文件被锁定）
             _loadedAssemblies.Clear();
@@ -224,9 +261,18 @@ namespace MotionApiTester.ViewModels
                     _dependencyResolver.RegisterEmbeddedProvider(modelAsm);
                 }
 
+                // ⚠️ 登记**实例**（不是字节）：AssemblyResolve 必须把同一个 Assembly 交回去。
+                //    若改成"按字节重新 Load 一份"，树里枚举的 BaseTester 类型与设备代码实际继承的
+                //    那个基类就是两份不同的 Type（.NET Framework 的 Load(byte[]) 不去重），
+                //    IsAssignableFrom 恒 false —— 基类上的 InitializeFixture 便永远作用不到
+                //    派生类的动作方法上，且日志里两个实例都显示"创建成功"，根本看不出来。
+                _dependencyResolver.Register(modelName, modelAsm);
+
                 // 机型 DLL 的解析器已就位，此后 BaseTester 的依赖可从嵌入资源按需解出
                 var baseAsm = Assembly.Load(baseBytes);
                 _loadedAssemblies.Add(baseAsm);
+                _dependencyResolver.Register(baseName, baseAsm);
+
                 Assemblies.Add(_enumerator.Enumerate(baseAsm, baseDll));
                 Assemblies.Add(_enumerator.Enumerate(modelAsm, modelPath));
             }
@@ -358,12 +404,19 @@ namespace MotionApiTester.ViewModels
             var requested = wizard.ResultDevice;
             var profile = _deviceManager.AddDevice(requested.Directory, requested.ModelDllName, requested.MachineType);
 
-            // 尊重向导里填写的设备名（AddDevice 默认用目录名）
+            // 尊重向导里填写的设备名与备注（AddDevice 默认用目录名、备注为空）
+            var changed = false;
             if (!string.IsNullOrWhiteSpace(requested.Name) && requested.Name != profile.Name)
             {
                 profile.Name = requested.Name;
-                _deviceManager.Save();
+                changed = true;
             }
+            if (!string.IsNullOrWhiteSpace(requested.Note) && requested.Note != profile.Note)
+            {
+                profile.Note = requested.Note;
+                changed = true;
+            }
+            if (changed) _deviceManager.Save();
 
             _devices.Add(profile);
             SelectedDevice = profile;
@@ -397,6 +450,13 @@ namespace MotionApiTester.ViewModels
             _maxLogLines = _settingsService.Settings.LogRetentionLines;
             ThemeMode = _settingsService.Settings.Theme;
             _deviceBinDirCache = null;   // 设备目录可能已改，下次访问重新解析
+
+            // 这两项是构造时读入的，改了必须立刻生效，否则用户得重启工具才看到变化
+            // （表现为"设置了但没用" —— 之前的超时设置就是这种下场）
+            _invoker.TimeoutSeconds = _settingsService.Settings.InvokeTimeoutSeconds;
+            foreach (var dir in _settingsService.Settings.ExtraDependencySearchPaths ?? new List<string>())
+                _dependencyResolver.AddSearchPath(dir);
+
             StatusText = "设置已保存";
         }
 

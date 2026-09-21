@@ -1,6 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Threading;
 
 namespace MotionApiTester.Services
 {
@@ -48,15 +47,34 @@ namespace MotionApiTester.Services
             return false;
         }
 
-        /// <summary>应用主题。需要 MainWindow 已经创建，否则只更新状态、不动资源字典。</summary>
+        /// <summary>
+        /// 应用主题。字典挂在 <see cref="Application.Resources"/> 上（**不是** MainWindow.Resources）。
+        ///
+        /// <para>为什么必须挂应用级：设置窗口 / 设备向导都是独立的 Window，
+        /// 窗口级字典照不到它们 —— 这也正是那两个窗口当初只能硬编码颜色的原因：
+        /// 深色模式下它们完全不跟主题。挂到应用级后所有窗口一起生效，
+        /// 那两个窗口里的 <c>{DynamicResource XxxBrush}</c> 才有东西可解析。</para>
+        /// </summary>
         public void Apply(string themeMode)
         {
             UpdateIsDark(themeMode);
 
-            var window = Application.Current?.MainWindow;
-            if (window == null) return;
+            var app = Application.Current;
+            if (app == null) return;
 
-            var merged = window.Resources.MergedDictionaries;
+            SwapThemeDictionary(app.Resources, new ResourceDictionary
+            {
+                Source = new Uri(IsDark ? DarkDictionary : LightDictionary, UriKind.Relative)
+            });
+
+            // 历史版本把字典挂在主窗口上；窗口级优先于应用级，不清掉会盖住新主题
+            if (app.MainWindow != null) SwapThemeDictionary(app.MainWindow.Resources, null);
+        }
+
+        /// <summary>移除资源里的主题字典，再追加 replacement（null 表示只移除）</summary>
+        private static void SwapThemeDictionary(ResourceDictionary target, ResourceDictionary replacement)
+        {
+            var merged = target.MergedDictionaries;
             for (int i = merged.Count - 1; i >= 0; i--)
             {
                 var source = merged[i].Source?.ToString();
@@ -64,32 +82,15 @@ namespace MotionApiTester.Services
                     merged.RemoveAt(i);
             }
 
-            merged.Add(new ResourceDictionary
-            {
-                Source = new Uri(IsDark ? DarkDictionary : LightDictionary, UriKind.Relative)
-            });
+            if (replacement != null) merged.Add(replacement);
         }
 
         /// <summary>
-        /// 启动时机问题：MainViewModel 由 MainWindow 的 XAML 在窗口构造函数中创建，
-        /// 此时 Application.Current.MainWindow 仍为 null，直接应用主题会被静默跳过，
-        /// 表现为"设置里存了深色主题但启动还是浅色"。因此延后到窗口 Loaded 之后再应用。
+        /// 保留此方法名只是为了不改调用点。
+        /// 字典已挂到应用级资源上，主题与主窗口的创建顺序不再相关（Application.Resources
+        /// 在 App 初始化时就绪，早于 StartupUri 创建主窗口），因此直接应用即可。
         /// </summary>
-        public void ApplyDeferred(string themeMode)
-        {
-            var app = Application.Current;
-            if (app == null)
-            {
-                // 无 Application（设计时 / 单元测试）—— 只同步状态
-                UpdateIsDark(themeMode);
-                return;
-            }
-
-            if (app.MainWindow == null)
-                app.Dispatcher.BeginInvoke(new Action(() => Apply(themeMode)), DispatcherPriority.Loaded);
-            else
-                Apply(themeMode);
-        }
+        public void ApplyDeferred(string themeMode) => Apply(themeMode);
 
         private void UpdateIsDark(string themeMode)
         {

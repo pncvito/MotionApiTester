@@ -72,13 +72,18 @@
             <StackPanel Orientation="Horizontal" Margin="2,1">
                 <TextBlock Text="{Binding Icon}" Foreground="{Binding IconColor}" Width="18" TextAlignment="Center"/>
                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding Badge}" Margin="6,0,0,0" Foreground="Gray" FontSize="10" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding Badge}" Margin="6,0,0,0" Foreground="{DynamicResource SubTextBrush}" FontSize="10" VerticalAlignment="Center"/>
             </StackPanel>
         </HierarchicalDataTemplate>
 
-        <!-- TreeViewItem 选中蓝色左边框 -->
+        <!-- TreeViewItem 选中蓝色左边框。
+             注意：不要再给 TreeView 单独设 ItemContainerStyle（会盖掉这个隐式样式、
+             让选中行的蓝色左边框失效）；展开状态也统一由这里绑定。 -->
         <Style TargetType="TreeViewItem">
-            <Setter Property="IsExpanded" Value="True"/>
+            <!-- IsExpanded 绑到节点数据上，于是"展开/折叠所有"遍历数据源即可生效 ——
+                 树开了虚拟化，靠 ItemContainerGenerator 拿容器只能覆盖已实化的那几层。
+                 TreeNodeVm.IsExpanded 默认 true，与原先写死的 Value="True" 行为一致。 -->
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
             <Setter Property="Padding" Value="2,1"/>
             <Style.Triggers>
                 <Trigger Property="IsSelected" Value="True">
@@ -168,11 +173,11 @@
                     <!-- 应用图标：与 exe / 任务栏同一份 app.ico -->
                     <Image Source="app.ico" Width="20" Height="20" VerticalAlignment="Center"
                            RenderOptions.BitmapScalingMode="HighQuality"/>
-                    <TextBlock Text="OptoFidelity API 测试工具" Margin="8,0,0,0" FontSize="12" Foreground="Gray" VerticalAlignment="Center"/>
+                    <TextBlock Text="OptoFidelity API 测试工具" Margin="8,0,0,0" FontSize="12" Foreground="{DynamicResource SubTextBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <TextBlock Text="{Binding MachineTypeText, StringFormat='机型: {0}'}" FontSize="11" Foreground="Gray"
+                    <TextBlock Text="{Binding MachineTypeText, StringFormat='机型: {0}'}" FontSize="11" Foreground="{DynamicResource SubTextBrush}"
                                VerticalAlignment="Center" Margin="0,0,14,0" ToolTip="来自 ConfigHardware\MachineType.json">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -247,7 +252,7 @@
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="🔍" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray"/>
+                            <TextBlock Text="🔍" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource SubTextBrush}"/>
                             <TextBox x:Name="SearchBox" Grid.Column="1" BorderThickness="0" Background="Transparent"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=300}"
                                      ToolTip="搜索方法/类型名 (Ctrl+F)" Height="26" VerticalContentAlignment="Center"/>
@@ -291,9 +296,9 @@
                     <!-- 面板头 -->
                     <Border Grid.Row="0" Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,6">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="API 树" FontSize="11" FontWeight="Bold" Foreground="Gray"/>
-                            <TextBlock Text="{Binding TotalTypesCount, StringFormat='· {0} 类型'}" Margin="6,0,0,0" Foreground="Gray" FontSize="10"/>
-                            <TextBlock Text="{Binding TotalMethodsCount, StringFormat='· {0} 方法'}" Margin="6,0,0,0" Foreground="Gray" FontSize="10"/>
+                            <TextBlock Text="API 树" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource SubTextBrush}"/>
+                            <TextBlock Text="{Binding TotalTypesCount, StringFormat='· {0} 类型'}" Margin="6,0,0,0" Foreground="{DynamicResource SubTextBrush}" FontSize="10"/>
+                            <TextBlock Text="{Binding TotalMethodsCount, StringFormat='· {0} 方法'}" Margin="6,0,0,0" Foreground="{DynamicResource SubTextBrush}" FontSize="10"/>
                         </StackPanel>
                     </Border>
                     <!-- 树 -->
@@ -334,8 +339,8 @@
                           Visibility="{Binding SelectedTreeNode, Converter={StaticResource NullToVisibilityConverter}}">
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                             <TextBlock Text="🔍" FontSize="64" Opacity="0.3" HorizontalAlignment="Center"/>
-                            <TextBlock Text="从左侧选择一个方法" Foreground="Gray" FontSize="14" Margin="0,8,0,0"/>
-                            <TextBlock Text="或属性 / 字段" Foreground="Gray" FontSize="11" Margin="0,4,0,0"/>
+                            <TextBlock Text="从左侧选择一个方法" Foreground="{DynamicResource SubTextBrush}" FontSize="14" Margin="0,8,0,0"/>
+                            <TextBlock Text="或属性 / 字段" Foreground="{DynamicResource SubTextBrush}" FontSize="11" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Grid>
 
@@ -369,7 +374,7 @@
                         </Border>
                         <!-- 摘要/文档 -->
                         <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,1" Padding="0,8,0,8" Margin="0,8,0,0">
-                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="Gray">
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource SubTextBrush}">
                                 <Run Text="📄 " FontSize="12"/>
                                 <Run Text="{Binding SelectedMethod.Summary, FallbackValue='(无 XML 文档 — 可在依赖项查看返回类型与参数)', TargetNullValue='(无 XML 文档)'}"/>
                             </TextBlock>
@@ -389,7 +394,7 @@
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding SelectedMethod.Parameters.Count, StringFormat='参数 ({0})'}" FontWeight="SemiBold" Foreground="Gray"/>
+                                        <TextBlock Text="{Binding SelectedMethod.Parameters.Count, StringFormat='参数 ({0})'}" FontWeight="SemiBold" Foreground="{DynamicResource SubTextBrush}"/>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                                             <Button Content="📋 填默认" Style="{StaticResource BtnBase}" Click="BtnFillDefaults_Click"/>
                                             <Button Content="🗑 清空" Style="{StaticResource BtnBase}" Click="BtnClearParams_Click"/>
@@ -407,7 +412,7 @@
                                                     <StackPanel Grid.Column="0">
                                                         <TextBlock>
                                                             <Run Text="{Binding Name}" FontFamily="Consolas" FontWeight="SemiBold"/>
-                                                            <Run Text="{Binding TypeName, StringFormat=' {0}'}" Foreground="Gray" FontSize="11"/>
+                                                            <Run Text="{Binding TypeName, StringFormat=' {0}'}" Foreground="{DynamicResource SubTextBrush}" FontSize="11"/>
                                                         </TextBlock>
                                                         <TextBlock Text="OPTIONAL" FontSize="9" Foreground="{DynamicResource WarnFgBrush}" Background="{DynamicResource WarnBgBrush}" Padding="3,1"
                                                                    HorizontalAlignment="Left" Margin="0,2,0,0"
@@ -421,7 +426,7 @@
                                                                  Padding="4,0,60,0"/>
                                                         <Border Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,1"
                                                                 HorizontalAlignment="Right" Padding="4,0" Margin="0,1,1,1">
-                                                            <TextBlock Text="{Binding TypeName}" FontSize="10" Foreground="Gray" VerticalAlignment="Center"/>
+                                                            <TextBlock Text="{Binding TypeName}" FontSize="10" Foreground="{DynamicResource SubTextBrush}" VerticalAlignment="Center"/>
                                                         </Border>
                                                     </Grid>
                                                     <CheckBox Grid.Column="2" Margin="4,0,0,0" ToolTip="勾选后强制传 null(忽略输入值)"
@@ -435,14 +440,14 @@
                                     <!-- JSON 高级输入 -->
                                     <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,8,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="📦 高级：JSON 数组（整组参数，按位置覆盖上面的输入）" FontSize="11" Foreground="Gray" Margin="0,0,0,4"/>
+                                            <TextBlock Text="📦 高级：JSON 数组（整组参数，按位置覆盖上面的输入）" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                                             <TextBox x:Name="TbJsonArgs" Height="60" AcceptsReturn="True"
                                                      FontFamily="Consolas" FontSize="12"
                                                      Text="{Binding JsonArgsOverride, UpdateSourceTrigger=PropertyChanged}"
-                                                     ToolTip="整组参数按位置覆盖，个数需与方法参数一致。例如：[100.5, 200.0, true, &quot;abc&quot;]"
+                                                     ToolTip="整组参数按位置覆盖，个数需与方法参数一致。数组参数直接写 JSON 数组，例如：[100.5, [1.0, 2.0], true, &quot;abc&quot;]（第 2 个参数是 double[]）。对象类型参数暂不支持，会明确报错。"
                                                      Background="{DynamicResource BackgroundBrush}"
                                                      Foreground="{DynamicResource TextBrush}"/>
-                                            <TextBlock Text="💡 填入后整组覆盖逐参数输入；切换选中项会自动清空" FontSize="10" Foreground="Gray" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                            <TextBlock Text="💡 填入后整组覆盖逐参数输入；切换选中项会自动清空" FontSize="10" Foreground="{DynamicResource SubTextBrush}" Margin="0,4,0,0" TextWrapping="Wrap"/>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
@@ -474,7 +479,7 @@
                                                     <ColumnDefinition Width="100"/>
                                                     <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Kind}" Foreground="Gray" FontSize="11" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding Kind}" Foreground="{DynamicResource SubTextBrush}" FontSize="11" VerticalAlignment="Center"/>
                                                 <TextBlock Grid.Column="1" Text="{Binding Name}" FontFamily="Consolas" FontSize="12"/>
                                             </Grid>
                                         </DataTemplate>
@@ -554,13 +559,13 @@
                                                     <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="Auto"/>
                                                 </Grid.RowDefinitions>
-                                                <TextBlock Text="返回值类型" Foreground="Gray" FontSize="11" Grid.Row="0" Grid.Column="0"/>
+                                                <TextBlock Text="返回值类型" Foreground="{DynamicResource SubTextBrush}" FontSize="11" Grid.Row="0" Grid.Column="0"/>
                                                 <TextBlock Text="{Binding ResultReturnType}" FontFamily="Consolas" FontSize="11" Grid.Row="0" Grid.Column="1" TextWrapping="Wrap"/>
-                                                <TextBlock Text="返回值 (JSON)" Foreground="Gray" FontSize="11" Grid.Row="1" Grid.Column="0"/>
+                                                <TextBlock Text="返回值 (JSON)" Foreground="{DynamicResource SubTextBrush}" FontSize="11" Grid.Row="1" Grid.Column="0"/>
                                                 <TextBlock Text="{Binding ResultReturnValue}" FontFamily="Consolas" FontSize="11" Grid.Row="1" Grid.Column="1" TextWrapping="Wrap"/>
-                                                <TextBlock Text="实例类型" Foreground="Gray" FontSize="11" Grid.Row="2" Grid.Column="0"/>
+                                                <TextBlock Text="实例类型" Foreground="{DynamicResource SubTextBrush}" FontSize="11" Grid.Row="2" Grid.Column="0"/>
                                                 <TextBlock Text="{Binding ResultInstanceType}" FontFamily="Consolas" FontSize="11" Grid.Row="2" Grid.Column="1" TextWrapping="Wrap"/>
-                                                <TextBlock Text="线程" Foreground="Gray" FontSize="11" Grid.Row="3" Grid.Column="0"/>
+                                                <TextBlock Text="线程" Foreground="{DynamicResource SubTextBrush}" FontSize="11" Grid.Row="3" Grid.Column="0"/>
                                                 <TextBlock Text="{Binding ResultThread}" FontFamily="Consolas" FontSize="11" Grid.Row="3" Grid.Column="1"/>
                                             </Grid>
                                             <!-- 完整消息(可滚动) -->
@@ -590,9 +595,9 @@
                     <Border Grid.Row="0" Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,6">
                         <Grid>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="调用历史" FontSize="11" FontWeight="Bold" Foreground="Gray"/>
-                                <TextBlock Text="{Binding HistoryItems.Count, StringFormat='· {0} 条'}" Margin="6,0,0,0" Foreground="Gray" FontSize="10"/>
-                                <TextBlock Text="{Binding NativeDlls.Count, StringFormat='· 原生 {0}'}" Margin="6,0,0,0" Foreground="Gray" FontSize="10"/>
+                                <TextBlock Text="调用历史" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource SubTextBrush}"/>
+                                <TextBlock Text="{Binding HistoryItems.Count, StringFormat='· {0} 条'}" Margin="6,0,0,0" Foreground="{DynamicResource SubTextBrush}" FontSize="10"/>
+                                <TextBlock Text="{Binding NativeDlls.Count, StringFormat='· 原生 {0}'}" Margin="6,0,0,0" Foreground="{DynamicResource SubTextBrush}" FontSize="10"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <Button Style="{StaticResource BtnBase}" Height="22" Padding="8,0" Margin="0" Command="{Binding ClearHistoryCommand}" ToolTip="清空调用历史 (Ctrl+H)">
@@ -613,9 +618,9 @@
                                 <Border Padding="8,6" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
                                     <StackPanel>
                                         <DockPanel>
-                                            <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss}" Foreground="Gray" FontFamily="Consolas" FontSize="10" DockPanel.Dock="Left"/>
+                                            <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss}" Foreground="{DynamicResource SubTextBrush}" FontFamily="Consolas" FontSize="10" DockPanel.Dock="Left"/>
                                             <Border DockPanel.Dock="Right" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,1" CornerRadius="8">
-                                                <TextBlock Text="{Binding ElapsedMs, StringFormat={}{0}ms}" FontSize="10" Foreground="Gray"/>
+                                                <TextBlock Text="{Binding ElapsedMs, StringFormat={}{0}ms}" FontSize="10" Foreground="{DynamicResource SubTextBrush}"/>
                                             </Border>
                                             <TextBlock HorizontalAlignment="Right"/>
                                         </DockPanel>
@@ -629,7 +634,7 @@
                                                     Visibility="{Binding Success, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                                 <TextBlock Text="✗ ERR" Foreground="{DynamicResource DangerFgBrush}" FontSize="10" FontWeight="SemiBold"/>
                                             </Border>
-                                            <TextBlock Text="{Binding Result}" Foreground="Gray" FontSize="11" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Result}" Foreground="{DynamicResource SubTextBrush}" FontSize="11" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>
@@ -665,7 +670,7 @@
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
-                                <TextBlock Grid.Row="0" Text="未发现原生 DLL" Foreground="Gray" FontSize="12"
+                                <TextBlock Grid.Row="0" Text="未发现原生 DLL" Foreground="{DynamicResource SubTextBrush}" FontSize="12"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Visibility="{Binding HasNativeDlls, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                                 <Grid Grid.Row="1" Margin="8,6">
@@ -674,7 +679,7 @@
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
-                                    <TextBlock Text="P/Invoke 模板" FontSize="11" Foreground="Gray" Margin="0,0,0,4"/>
+                                    <TextBlock Text="P/Invoke 模板" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                                     <TextBox Grid.Row="1" Text="{Binding PInvokeTemplate, Mode=OneWay}" IsReadOnly="True"
                                              FontFamily="Consolas" FontSize="11" Height="110" AcceptsReturn="True"
                                              TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
@@ -750,8 +755,8 @@
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessFgBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Text="就绪" Margin="6,0,0,0" FontSize="11" Foreground="Gray"/>
-                        <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
+                        <TextBlock Text="就绪" Margin="6,0,0,0" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="|" Margin="12,0" Foreground="{DynamicResource SubTextBrush}"/>
                         <TextBlock Text="📦" Margin="0,0,4,0" FontSize="11"/>
                     </StackPanel>
 
@@ -761,13 +766,13 @@
                                ToolTip="{Binding CurrentLoadedPath}"/>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
-                        <TextBlock Text="{Binding TotalTypesCount, StringFormat='🔷 {0} 类型'}" FontSize="11" Foreground="Gray"/>
-                        <TextBlock Text="{Binding TotalMethodsCount, StringFormat='⚙ {0} 方法'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
-                        <TextBlock Text="{Binding TotalPropertiesCount, StringFormat='📋 {0} 属性'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
-                        <TextBlock Text="{Binding TotalFieldsCount, StringFormat='▣ {0} 字段'}" Margin="8,0,0,0" FontSize="11" Foreground="Gray"/>
-                        <TextBlock Text="|" Margin="12,0" Foreground="Gray"/>
-                        <TextBlock Text="⏱ 上次:" FontSize="11" Foreground="Gray"/>
+                        <TextBlock Text="|" Margin="12,0" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="{Binding TotalTypesCount, StringFormat='🔷 {0} 类型'}" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="{Binding TotalMethodsCount, StringFormat='⚙ {0} 方法'}" Margin="8,0,0,0" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="{Binding TotalPropertiesCount, StringFormat='📋 {0} 属性'}" Margin="8,0,0,0" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="{Binding TotalFieldsCount, StringFormat='▣ {0} 字段'}" Margin="8,0,0,0" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="|" Margin="12,0" Foreground="{DynamicResource SubTextBrush}"/>
+                        <TextBlock Text="⏱ 上次:" FontSize="11" Foreground="{DynamicResource SubTextBrush}"/>
                         <TextBlock Text="{Binding LastElapsedMs, StringFormat='{}{0}ms'}" Margin="4,0,0,0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SuccessFgBrush}"/>
                     </StackPanel>
                 </Grid>
@@ -776,19 +781,19 @@
                     <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
                         <TextBlock Text="Ctrl+O" FontFamily="Consolas" FontSize="10"/>
                     </Border>
-                    <TextBlock Text="加载" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
+                    <TextBlock Text="加载" Margin="4,0,8,0" FontSize="10" Foreground="{DynamicResource SubTextBrush}"/>
                     <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
                         <TextBlock Text="F5" FontFamily="Consolas" FontSize="10"/>
                     </Border>
-                    <TextBlock Text="调用" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
+                    <TextBlock Text="调用" Margin="4,0,8,0" FontSize="10" Foreground="{DynamicResource SubTextBrush}"/>
                     <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
                         <TextBlock Text="Ctrl+L" FontFamily="Consolas" FontSize="10"/>
                     </Border>
-                    <TextBlock Text="清空日志" Margin="4,0,8,0" FontSize="10" Foreground="Gray"/>
+                    <TextBlock Text="清空日志" Margin="4,0,8,0" FontSize="10" Foreground="{DynamicResource SubTextBrush}"/>
                     <Border Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4,0" CornerRadius="3">
                         <TextBlock Text="Ctrl+H" FontFamily="Consolas" FontSize="10"/>
                     </Border>
-                    <TextBlock Text="清空历史" Margin="4,0,0,0" FontSize="10" Foreground="Gray"/>
+                    <TextBlock Text="清空历史" Margin="4,0,0,0" FontSize="10" Foreground="{DynamicResource SubTextBrush}"/>
                 </StackPanel>
             </Grid>
         </Border>

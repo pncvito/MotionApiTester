@@ -123,7 +123,8 @@ namespace MotionApiTester.Views
                 Name = TbName.Text.Trim(),
                 Directory = dir,
                 ModelDllName = CbModelDll.SelectedItem.ToString(),
-                MachineType = TbMachineType.Text?.Trim() ?? ""
+                MachineType = TbMachineType.Text?.Trim() ?? "",
+                Note = TbNote.Text?.Trim() ?? ""
             };
 
             DialogResult = true;

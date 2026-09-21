@@ -30,7 +30,25 @@ OptoFidelity 内部用 Prism.DryIoc，工具只用构造函数注入。
 
 ### 5. 界面颜色一律走主题令牌
 `MainWindow.xaml` / code-behind 里**不要硬编码颜色**，用 `{DynamicResource XxxBrush}`。
-两套主题 `Themes/LightTheme.xaml` 与 `Themes/DarkTheme.xaml` 的键必须**完全对称**（当前各 30 个键）。
+两套主题 `Themes/LightTheme.xaml` 与 `Themes/DarkTheme.xaml` 的键必须**完全对称**（当前各 54 个键）。
+
+**主题字典挂在 `Application.Resources` 上**（见 `ThemeManager.Apply`），不是 `MainWindow.Resources` ——
+设置窗口 / 设备向导都是独立的 Window，窗口级字典照不到它们，那样它们只能硬编码颜色、也永远不跟主题
+（历史上就是这样）。次要文字用 `SubTextBrush`（别再写 `Foreground="Gray"`），分隔线用 `BorderBrush`
+（别再写 `#E0E0E0`），提示框用 `WarnBg/WarnFg`。
+
+### 6. 程序集只加载一次：`Assembly.Load(byte[])` 不去重
+实测（.NET Framework 4.8）：同一份字节 `Assembly.Load` 两次会得到**两个程序集对象**
+（`ReferenceEquals` 与各自的类型对象都不相等）。已加载的程序集永不卸载，所以每次重复加载
+都是一份永久泄漏的副本 —— 机型 DLL 约 5MB，`Assembly.Load(bytes).GetName().Name` 这种
+"只为取个名字"的写法一次就能漏掉两份；`AssemblyResolve` 里每次命中都 `Assembly.Load(bytes)` 同理。
+
+约定：设备 DLL 只 `Load` 一次；取简名用 `AssemblyName.GetAssemblyName(path).Name`（只读元数据、不加载）；
+把**实例**登记给 `DependencyResolver.Register(name, assembly)`，让 AssemblyResolve 原样交回同一个程序集。
+
+> 注：byte[] 加载的程序集**已经加载**时，CLR 对引用解析会按标识复用它 —— 实测机型类型继承链上的基类
+> 与枚举用的那份确实是同一个对象，并未出现类型身份分裂。所以这条例约解决的是"别造冗余副本、
+> 别让交回去的对象不确定"，**不是**因为必然会有 `IsAssignableFrom` 恒 false 的问题。
 可用语义令牌：`SuccessBg/Fg`、`DangerBg/Fg`、`WarnBg/Fg`、`InfoBg/Fg`、`PurpleBg/Fg`、`NeutralBg/Fg`、`CodeBg/Fg`，以及
 `Background/Panel/Text/SubText/Accent/Border/StatusBar/BottomBar/LogBackground/LogForeground/RowSelected`。
 
@@ -67,6 +85,9 @@ MSBUILD="/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/B
 ```bash
 python tools/verify-structure.py
 ```
+
+⚠️ 仓库里 `tools/*.py` 与 `.verify/` 目前**都不存在**（被 `aab4724` 一起删掉了），
+脚本与校验工程需要时按本节说明重建。
 
 它会检查：XAML 里每个 `{Binding Xxx}` 的根标识符是否有对应的 public 成员、csproj 的
 `Compile`/`Page` 清单与磁盘文件是否互相覆盖、已删除的成员是否还有残留引用、XAML 事件处理器
@@ -150,19 +171,27 @@ D:\MotionApiTester\
 
 ### 调用链路
 1. `MainViewModel.LoadDeviceFromDirectory()`
-   → 扫描目录 → 匹配机型 DLL → `File.ReadAllBytes` → `Assembly.Load(byte[])`
-   （字节登记进 `DependencyResolver.Register`，供 `AssemblyResolve` 复用）
+   → 扫描目录 → 匹配机型 DLL → `File.ReadAllBytes` → `Assembly.Load(byte[])`（**每种 DLL 只加载一次**）
+   → **实例**登记进 `DependencyResolver.Register`，供 `AssemblyResolve` 原样交回同一个程序集（见硬性约束 6）
    → `ReflectionEnumerator.Enumerate()`
    → `_invoker.SetCandidateAssemblies(_loadedAssemblies)`
 2. `InvokeSelectedAsync()` → `ApiInvoker.InvokeAsync(method, JsonArgsOverride)`
 3. `ApiInvoker` 内部顺序：
    - `BuildParameters()`：logger 参数（`Action<string>`）注入回调 → 用户勾选的 `PassNull` → `DefaultValue` → `ConvertValue` 逐参数转换；
      若填了 JSON 数组则**按位置整组覆盖**（个数必须与参数个数一致，否则回退）
-   - 构造函数：`ConstructorInfo.Invoke(args)` 直接返回新实例
-   - 实例方法：`ResolveInstance(DeclaringType)` —— 具体类型直接 `Activator.CreateInstance`；
-     **接口 / 抽象类**则在候选程序集里找"可无参构造的具体实现"（优先机型 DLL、其次类名最短），结果缓存
-   - 实例按类型缓存复用（**同一类型重复调用共享实例，保留设备内部状态**）
-   - `Target.Invoke(instance, args)`，返回值与异常全部写入 `CallHistoryItem` + 日志队列
+   - `out` / `ref` 参数按**元素类型**取默认值（`Boolean&` 之类不能传 null，否则 Invoke 直接抛 ArgumentException）；
+     逐参数输入与 JSON 都支持数组（文本用逗号分隔 / JSON 用数组），**转换失败会明确打一条警告**而不是静默给 null
+   - 构造函数：`ConstructorInfo.Invoke(args)` 返回新实例，并**登记为该类型的当前实例**（后续调用复用它）
+   - 实例方法：`ResolveInstance(DeclaringType)` —— ① 先在已建实例里找"能赋给该类型"的那个（`FindReusable`）；
+     ② 否则在候选程序集里找**派生得最深**的可无参构造实现（接口 / 抽象类 / 具体基类一视同仁），结果缓存
+   - ⚠️ 为什么必须复用同一个对象：设备侧只有一个实例，但成员按声明类型分散在继承链上
+     （`BaseInterface.InitializeFixture` 与 `EolSeriesBaseInterface.FixtureMoveToLoadUnloadingPosition`），
+     而 `ReflectionEnumerator` 用 `DeclaredOnly`，成员只会挂在声明它的类型节点下 ——
+     按声明类型各建各的实例，初始化就永远作用不到动作方法上
+   - `Target.Invoke(instance, args)`，返回值 / out-ref 回填值 / 异常全部写进 `CallHistoryItem` + 日志队列
+   - 结果判定：先看是否抛异常，再看返回值是否形如 `(false, "…")` —— 设备 API 普遍把失败包在返回值里
+     （`TryReadApiFailure`），只看异常会把失败报成"✅ 调用成功"
+   - 可选超时（设置的"调用超时"）：超时只让界面不再干等，**无法中断设备侧执行**
 
 ### 关于 `ApiMethod` 的两个反射入口
 `ApiMethod.MethodInfo` 只对普通方法非空，构造函数放在 `ApiMethod.ConstructorInfo`，
@@ -216,17 +245,22 @@ Row4 Expander 实时日志          Row5 底部状态栏（计数 + 快捷键）
 - DLL 扫描 / 角色识别 / 机型模糊匹配 / byte[] 加载 + AssemblyResolve 兜底
 - 反射枚举：类型 / 方法 / 构造函数 / 属性 / 字段，过滤编译器生成成员
 - API 三栏树 + 搜索过滤 + 右键复制 + 展开折叠
-- 方法 / 构造函数 / 属性 / 字段调用（含接口实现自动解析、logger 注入、JSON 整组参数、传 null）
-- 实时日志面板（队列 + 100ms 刷新）+ 调用历史（持久化）
+- 方法 / 构造函数 / 属性 / 字段调用（含契约类型实现自动解析、跨继承链复用实例、logger 注入、JSON 整组参数、传 null）
+- 调用结果判定：异常 + 返回值自报失败（`(false, "…")`）两条都判；`out`/`ref` 回填值一并显示
+- 实时日志面板（队列 + 100ms 刷新）+ 调用历史（持久化，属性/字段读取也记）
+- 导出支持纯文本 / JSON（含调用历史），跟随设置里的"导出格式"
 - 原生 DLL 面板（PE 架构识别 + P/Invoke 模板）
 - 多设备登记与切换（`devices.json`）
-- 浅色 / 深色 / 跟随系统主题（语义令牌，界面零硬编码颜色）
-- 设置窗口、全局异常兜底
+- 浅色 / 深色 / 跟随系统主题（语义令牌，界面零硬编码颜色，主题字典挂应用级 → 三个窗口一起生效）
+- 设置窗口（主题 / 日志行数 / 导出格式 / 调用超时 / 设备目录 / 额外依赖搜索路径 / 设备管理）、全局异常兜底
 - `MainViewModel` 按职责拆为 7 个 partial 文件；树构建 / 主题 / 依赖解析 / 日志缓冲 / 目录解析已抽成独立服务
 
 **未实现 / 已知限制**
 - `NativeDllInspector` 只生成占位模板，**未真正解析导出表**（`GeneratePInvokeTemplate` 里的函数名是 TODO）
-- "取消调用"只能取消尚未开始的任务；`MethodBase.Invoke` 是同步阻塞调用，无法中断已在设备侧执行的指令
+- "取消调用"只能取消尚未开始的任务；`MethodBase.Invoke` 是同步阻塞调用，无法中断已在设备侧执行的指令。
+  "调用超时"同理：只让界面不再干等并明确提示，设备侧仍在跑 —— **不要因为超时就重复下发动作指令**
+- JSON 高级参数**不支持对象类型**（数组已支持），遇到对象会明确报一条警告并按 null 传入
+- 依赖缺失报告延迟约 400ms 裁决（AssemblyResolve 是多播事件，单个处理器未命中≠解析失败，见 `DependencyResolver.FlushPendingMisses`）
 - "卸载"只清界面与缓存：`Assembly.Load` 无法从 AppDomain 卸载
 - 接口实现必须**可无参构造**，否则仍会失败（会给出明确错误信息）
 - 调用历史未按设备隔离（deviceId 硬编码 `default`）

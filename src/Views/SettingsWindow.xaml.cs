@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Windows;
 using MotionApiTester.Services;
 using MotionApiTester.ViewModels;
@@ -28,6 +30,10 @@ namespace MotionApiTester.Views
             TbTimeout.Text = settings.InvokeTimeoutSeconds.ToString();
             CbExportFormat.SelectedIndex = settings.ExportFormat == "json" ? 1 : 0;
 
+            TbDeviceDir.Text = settings.DefaultDeviceDirectory ?? "";
+            TbExtraPaths.Text = string.Join(Environment.NewLine,
+                settings.ExtraDependencySearchPaths ?? new List<string>());
+
             ResultSettings = settings;
         }
 
@@ -57,8 +63,30 @@ namespace MotionApiTester.Views
             ResultSettings.InvokeTimeoutSeconds = timeout;
             ResultSettings.ExportFormat = CbExportFormat.SelectedIndex == 1 ? "json" : "txt";
 
+            // 目录不做"必须存在"校验：设备目录可能插在别的机器上或暂时不可达，
+            // 拦下来只会让人没法先配好路径。空值 = 自动探测（见 DeviceDirectoryResolver）。
+            ResultSettings.DefaultDeviceDirectory = (TbDeviceDir.Text ?? "").Trim().Trim('"');
+            ResultSettings.ExtraDependencySearchPaths = ParseLines(TbExtraPaths.Text);
+
             DialogResult = true;
             Close();
+        }
+
+        /// <summary>多行文本 → 目录列表：去空白行、去引号、按不区分大小写去重</summary>
+        private static List<string> ParseLines(string text)
+        {
+            var paths = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(text)) return paths;
+
+            foreach (var raw in text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var path = raw.Trim().Trim('"');
+                if (path.Length == 0) continue;
+                if (!seen.Add(path)) continue;      // 去重（不区分大小写）
+                paths.Add(path);
+            }
+            return paths;
         }
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e)

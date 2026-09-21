@@ -78,13 +78,6 @@ namespace MotionApiTester.Services
             Items.Clear();
         }
 
-        /// <summary>导出为 JSON</summary>
-        public void Export(string filePath)
-        {
-            var json = JsonSerializer.Serialize(Items, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(filePath, json);
-        }
-
         /// <summary>获取历史文件路径（按设备 ID）</summary>
         public string GetHistoryPath(string deviceId)
         {

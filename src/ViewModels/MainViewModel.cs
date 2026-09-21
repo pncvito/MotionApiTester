@@ -320,7 +320,11 @@ namespace MotionApiTester.ViewModels
                 _isDarkTheme = isDark;
                 OnPropertyChanged(nameof(IsDarkTheme));
             });
-            _invoker = new ApiInvoker(Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher, _logBuffer);
+            _invoker = new ApiInvoker(Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher, _logBuffer)
+            {
+                // 调用超时来自设置（0/负 = 不限）。以前这个设置项存了却没人读，等于装饰。
+                TimeoutSeconds = _settingsService.Settings.InvokeTimeoutSeconds
+            };
 
             // 额外的依赖搜索目录（写在 settings.json，避免把私有构建产物路径硬编码进代码）
             foreach (var dir in _settingsService.Settings.ExtraDependencySearchPaths ?? new List<string>())

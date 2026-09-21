@@ -13,6 +13,10 @@ namespace MotionApiTester.Models
         public string ModelDllPath => string.IsNullOrEmpty(ModelDllName) ? "" : System.IO.Path.Combine(Directory, ModelDllName);
         public string ModelDllName { get; set; } = "";
         public string MachineType { get; set; } = "";
+
+        /// <summary>备注。设备向导里填的说明文字（以前那次输入没地方存，填了等于没填）</summary>
+        public string Note { get; set; } = "";
+
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime LastUsedAt { get; set; } = DateTime.Now;
     }

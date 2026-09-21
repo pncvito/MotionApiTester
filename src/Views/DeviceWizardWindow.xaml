@@ -2,9 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="添加设备"
-        Height="380" Width="560"
+        Height="420" Width="560"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        Background="{DynamicResource BackgroundBrush}"
+        Foreground="{DynamicResource TextBrush}">
 
     <Grid Margin="16">
         <Grid.RowDefinitions>
@@ -38,8 +40,11 @@
             </Grid>
 
             <!-- 扫描状态 -->
-            <Border x:Name="BorderScanResult" Background="#FFF8E1" BorderBrush="#FFD54F" BorderThickness="1" Padding="8" Margin="0,8" Visibility="Collapsed">
-                <TextBlock x:Name="TbScanResult" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+            <!-- 扫描结果框走 Warn 令牌：原先写死 #FFF8E1/#FFD54F，
+                 一旦窗口跟随深色主题，浅底 + 浅色字会变成一片糊 -->
+            <Border x:Name="BorderScanResult" Background="{DynamicResource WarnBgBrush}" BorderBrush="{DynamicResource WarnFgBrush}" BorderThickness="1" Padding="8" Margin="0,8" Visibility="Collapsed">
+                <TextBlock x:Name="TbScanResult" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"
+                           Foreground="{DynamicResource WarnFgBrush}"/>
             </Border>
 
             <!-- 候选机型 DLL -->

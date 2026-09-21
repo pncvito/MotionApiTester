@@ -7,7 +7,17 @@ using MotionApiTester.Models;
 
 namespace MotionApiTester.Services
 {
-    /// <summary>DLL 程序集加载器（含 Costura 检测）</summary>
+    /// <summary>
+    /// DLL 程序集加载器（含 Costura 检测）。
+    ///
+    /// <para>⚠️ <b>当前未被任何代码使用</b>，实际的加载路径在
+    /// <c>MainViewModel.LoadDeviceFromDirectory</c>（走 byte[] + 显式激活 Costura + 登记实例）。</para>
+    ///
+    /// <para>⚠️ 若将来启用本类，必须先把 <c>LoadFrom</c> 改成"加载一次、登记实例、复用同一 Assembly"：
+    /// <c>Assembly.Load(byte[])</c> 在 .NET Framework 下不会去重，同一份字节加载两次会得到
+    /// 两个类型身份互不相等的程序集（<c>IsAssignableFrom</c> 恒 false，且副本永不卸载）。
+    /// 见 <see cref="DependencyResolver"/> 的类注释。</para>
+    /// </summary>
     public class AssemblyLoader
     {
         /// <summary>

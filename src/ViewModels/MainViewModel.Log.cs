@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 
 namespace MotionApiTester.ViewModels
 {
@@ -19,25 +22,57 @@ namespace MotionApiTester.ViewModels
         /// </summary>
         internal void AppendLog(string message) => _logBuffer.Write(message);
 
-        /// <summary>导出当前日志到文件</summary>
+        /// <summary>
+        /// 导出当前日志到文件。
+        /// 格式跟随设置里的「导出格式」—— 以前这个设置项存了却没人读，永远只写 .txt。
+        /// </summary>
         private void ExportLog()
         {
+            var asJson = string.Equals(_settingsService.Settings.ExportFormat, "json",
+                                       StringComparison.OrdinalIgnoreCase);
+
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
-                Filter = "文本文件|*.txt|所有文件|*.*",
-                FileName = $"MotionApiTester-{DateTime.Now:yyyyMMdd-HHmmss}.log"
+                Filter = asJson ? "JSON 文件|*.json|所有文件|*.*" : "文本文件|*.txt|所有文件|*.*",
+                FileName = $"MotionApiTester-{DateTime.Now:yyyyMMdd-HHmmss}.{(asJson ? "json" : "txt")}"
             };
             if (dlg.ShowDialog() != true) return;
 
             try
             {
-                File.WriteAllText(dlg.FileName, LogText);
+                if (asJson) WriteJsonExport(dlg.FileName);
+                else File.WriteAllText(dlg.FileName, LogText);
+
                 StatusText = $"✅ 日志已导出: {dlg.FileName}";
             }
             catch (Exception ex)
             {
                 StatusText = $"❌ 导出失败: {ex.Message}";
             }
+        }
+
+        /// <summary>
+        /// JSON 导出：日志行 + 调用历史一起给出。
+        /// 只把 LogText 塞成一个 JSON 字符串没有意义 —— 真正结构化的是调用历史
+        /// （成功与否、耗时、参数），排查时要的就是它。
+        /// </summary>
+        private void WriteJsonExport(string path)
+        {
+            var payload = new
+            {
+                exportedAt = DateTime.Now,
+                loadedPath = CurrentLoadedPath,
+                machineType = MachineTypeText,
+                logLines = (LogText ?? "").Split('\n'),
+                history = _historyItems.ToList()
+            };
+
+            // 不转义非 ASCII，否则导出的中文全是 \uXXXX，人没法看
+            File.WriteAllText(path, JsonSerializer.Serialize(payload, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            }));
         }
     }
 }

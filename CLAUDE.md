@@ -69,8 +69,36 @@ python tools/verify-structure.py
 ```
 
 它会检查：XAML 里每个 `{Binding Xxx}` 的根标识符是否有对应的 public 成员、csproj 的
-`Compile`/`Page` 清单与磁盘文件是否互相覆盖、已删除的成员是否还有残留引用，并列出文件规模。
-**改动 XAML 绑定或增删源文件后必跑。**
+`Compile`/`Page` 清单与磁盘文件是否互相覆盖、已删除的成员是否还有残留引用、XAML 事件处理器
+是否有对应实现，并列出文件规模。**改动 XAML 绑定或增删源文件后必跑。**
+
+### 图标校验
+
+`src/app.ico` 曾经**整个目录表损坏**（像素数据完好，但 ICONDIRENTRY 的 `dwBytesInRes`
+全被写成 1、`dwImageOffset` 写成 118,119,120… 递增）。Windows 资源管理器对坏目录比较宽容，
+肉眼看不出来；而 WPF 的 ImageSource 走 WIC，读目录拿到垃圾后直接抛 `XamlParseException` +
+`FileFormatException`（`0x88982F60` 图像无法识别），表现为**程序一启动就崩**。换图标后必跑：
+
+```bash
+python tools/verify-ico.py
+```
+
+纯标准库，按 ICO 规范校验目录表与数据区是否自洽，无需第三方依赖。
+判断「WIC 到底能不能读某张图」最直接的办法，是用 WPF 的
+`BitmapDecoder.Create(new Uri(path), BitmapCreateOptions.None, BitmapCacheOption.OnLoad)`
+读一次 —— 运行时抛的就是它。
+
+### 图标资源的两个登记点
+
+`src/app.ico` 同时承担两个角色，**缺一不可**：
+
+| csproj 项 | 作用 | 缺失后果 |
+|---|---|---|
+| `<ApplicationIcon>app.ico</ApplicationIcon>` | exe 文件图标（资源管理器 / 任务栏） | exe 显示系统默认图标 |
+| `<Resource Include="app.ico" />` | 打成 WPF 资源，供 XAML 引用 | `Icon="app.ico"` 启动即抛 `XamlParseException` |
+
+引用点在 `MainWindow.xaml`：`Window` 的 `Icon="app.ico"` + 自绘标题栏左侧的
+`<Image Source="app.ico"/>`。换图标文件后两者都会自动生效，但要**重新构建**才会重新打包资源。
 
 ## 目录结构
 

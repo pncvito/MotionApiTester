@@ -38,6 +38,15 @@
   **必须另行登记 `<Resource Include="app.ico" />`**，`Window.Icon="app.ico"` 与标题栏
   `<Image Source="app.ico"/>` 才能引用。漏登记会在启动时抛 `XamlParseException`。
   验证办法：用 Python 搜 `src/obj/Debug/MotionApiTester.g.resources` 里有没有 `app.ico` 这个条目。
+- ⚠️ **app.ico 曾被整个目录表写坏**（2026-09-21 实际发生，导致启动即崩）：像素数据完好，
+  但 ICONDIRENTRY 的 `dwBytesInRes` 全是 1、`dwImageOffset` 是 118,119,120… 递增。
+  资源管理器宽容看不出；WIC/WPF 读目录得到垃圾 → `XamlParseException` +
+  `FileFormatException`（`0x88982F60` 图像无法识别）。
+  **换图标后跑 `python tools/verify-ico.py`**（纯标准库）。修复方式：数据区是连续 PNG，
+  切出来重建目录表（≤128 转 32bpp DIB、256 保留 PNG，即 Windows 标准 ICO 布局）。
+  验证必须用 WPF 的 `BitmapDecoder.Create(new Uri(path), ...)` 真读一遍 + 逐帧比像素哈希。
+  **注意**：Pillow 读 DIB 条目会报「像素不一致」——那是它按 BMP 规范把第 4 字节当 reserved，
+  而 ICO 规范里那是 alpha；WIC 返回 `Bgra32` 且像素 100% 一致，**不要据此改动文件**。
 - **实时日志面板**（`Row 4`）显示不全有两个成因，都已修：① 默认横向滚动条是 `Hidden`，
   长日志行被直接截断 → 需 `HorizontalScrollBarVisibility="Auto"`；② `Text` 追加在末尾但 TextBox
   不跟随滚动 → 在 `TextChanged` 里 `ScrollToEnd()`（仅当视口原本贴底，避免打断向上翻阅）。

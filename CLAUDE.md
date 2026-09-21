@@ -35,7 +35,13 @@ OptoFidelity 内部用 Prism.DryIoc，工具只用构造函数注入。
 **主题字典挂在 `Application.Resources` 上**（见 `ThemeManager.Apply`），不是 `MainWindow.Resources` ——
 设置窗口 / 设备向导都是独立的 Window，窗口级字典照不到它们，那样它们只能硬编码颜色、也永远不跟主题
 （历史上就是这样）。次要文字用 `SubTextBrush`（别再写 `Foreground="Gray"`），分隔线用 `BorderBrush`
-（别再写 `#E0E0E0`），提示框用 `WarnBg/WarnFg`。
+（别再写 `#E0E0E0`），提示框用 `WarnBg/WarnFg`。树节点图标颜色也不在 `TreeBuilder` 里写死，
+而是由 `MainWindow.xaml` 的节点模板按 `NodeKind` / `Badge` 用 DataTrigger 映射到令牌。
+
+**输入类控件（TextBox / ListBox …）必须在 `App.xaml` 里显式给颜色**（已有隐含样式）：WPF 默认模板用的是
+系统色，不跟本应用的主题走 —— 不写就会出现"深色主题里冒出白色输入框"。
+**`ComboBox` 除外且不要使用**：它的默认模板无视 `Background`（要换整个 `ControlTemplate` 才跟得上主题），
+所以本应用已把它清掉 —— 导出格式改用单选按钮、设备向导的机型 DLL 改用 ListBox。
 
 ### 6. 程序集只加载一次：`Assembly.Load(byte[])` 不去重
 实测（.NET Framework 4.8）：同一份字节 `Assembly.Load` 两次会得到**两个程序集对象**
@@ -165,7 +171,8 @@ D:\MotionApiTester\
 | `DependencyResolver` | `AssemblyResolve` 的实际逻辑：字节缓存 → 搜索路径（**代码里不写死绝对路径**） |
 | `LogTextBuffer` | 日志并发入队 + 保留行截断，供 UI 定时器 Flush |
 | `ThemeManager` | Light/Dark/System 解析与主题字典替换，回调同步 `IsDarkTheme` |
-| `NativeDllInspector` | PE 头解析：架构识别 + P/Invoke 模板生成（导出表枚举尚未实现） |
+| `NativeDllInspector` | PE 解析：架构识别 + **导出表枚举**（名字/序号/转发/调用约定）+ 逐函数 P/Invoke 模板；**只读文件，绝不 LoadLibrary** |
+| `ParameterMemory` | 方法参数值记忆（`param-values.json`，按方法签名索引；成功调用后写入） |
 | `DeviceManager` / `HistoryService` / `SettingsService` | 持久化到 `%APPDATA%\MotionApiTester\` |
 | `LogService` | 当前未被使用 |
 
@@ -206,7 +213,7 @@ Row2 状态条（StatusText）
 主内容（Row2 RowSpan=3，覆盖式叠层）：
    左 280px  API 树（Assembly → Namespace → Type → 分组 → 成员）
    中  *      方法详情（修饰符标签 / 签名 / 参数输入 / 原始签名(IL) / XML 文档 / 依赖项）
-   右 320px  标签页：调用历史 | 原生 DLL（列表 + P/Invoke 模板）
+   右 320px  标签页：调用历史 | 原生 DLL（DLL 列表 + 导出函数 + P/Invoke 模板）
 Row4 Expander 实时日志          Row5 底部状态栏（计数 + 快捷键）
 ```
 
@@ -234,7 +241,8 @@ Row4 Expander 实时日志          Row5 底部状态栏（计数 + 快捷键）
 | `D:\MotionConfig\ConfigHardware\MachineType.json` | 机型字符串（只读） |
 | `%APPDATA%\MotionApiTester\settings.json` | 主题 / 日志行数 / 超时 / `DefaultDeviceDirectory`（留空=自动探测）/ `ExtraDependencySearchPaths`（额外依赖搜索目录） |
 | `%APPDATA%\MotionApiTester\devices.json` | 已登记设备（`DeviceManager`） |
-| `%APPDATA%\MotionApiTester\devices\default\history.json` | 调用历史（deviceId 目前硬编码 `default`） |
+| `%APPDATA%\MotionApiTester\devices\<机型 DLL 名>\history.json` | 调用历史，**按设备隔离**（首次自动从旧的 `default` 迁移过来） |
+| `%APPDATA%\MotionApiTester\param-values.json` | 方法参数值记忆（按方法签名索引，成功调用后写入） |
 | `%TEMP%\MotionApiTester\crash.log` | 未处理异常 |
 
 `.gitignore` 忽略了 `Bin\` 与 `src\bin` / `src\obj`，因此**克隆后需要手动把设备 DLL 拷进 `Bin\`**。
@@ -245,6 +253,9 @@ Row4 Expander 实时日志          Row5 底部状态栏（计数 + 快捷键）
 - DLL 扫描 / 角色识别 / 机型模糊匹配 / byte[] 加载 + AssemblyResolve 兜底
 - 反射枚举：类型 / 方法 / 构造函数 / 属性 / 字段，过滤编译器生成成员
 - API 三栏树 + 搜索过滤 + 右键复制 + 展开折叠
+- 原生 DLL **导出表解析**（手工按 PE 规范解析导出目录，只读文件、绝不 LoadLibrary）+ 选中导出函数即生成 P/Invoke 模板
+- 方法**参数值记忆**：成功调用后记住参数值，选中方法时自动回填空着的参数，另有「🕘 回填上次」按钮
+- 调用历史**按设备隔离**（`devices\<机型 DLL 名>\history.json`；首次从旧的 `default` 自动迁移）
 - 方法 / 构造函数 / 属性 / 字段调用（含契约类型实现自动解析、跨继承链复用实例、logger 注入、JSON 整组参数、传 null）
 - 调用结果判定：异常 + 返回值自报失败（`(false, "…")`）两条都判；`out`/`ref` 回填值一并显示
 - 实时日志面板（队列 + 100ms 刷新）+ 调用历史（持久化，属性/字段读取也记）
@@ -256,14 +267,18 @@ Row4 Expander 实时日志          Row5 底部状态栏（计数 + 快捷键）
 - `MainViewModel` 按职责拆为 7 个 partial 文件；树构建 / 主题 / 依赖解析 / 日志缓冲 / 目录解析已抽成独立服务
 
 **未实现 / 已知限制**
-- `NativeDllInspector` 只生成占位模板，**未真正解析导出表**（`GeneratePInvokeTemplate` 里的函数名是 TODO）
+- 导出表里**只有名字与序号，没有签名**（参数类型 / 返回值）—— 生成的模板只是骨架，必须照厂商 `.h` 核对
+- 参数记忆只记**成功调用**用过的值（失败多半是参数本身有问题，记下来会一直沿用错的）；
+  存在 `%APPDATA%\MotionApiTester\param-values.json`，键 = 声明类型全名 + `MethodBase.ToString()`
+  （注意 `MethodBase.ToString()` **不含声明类型**，不加前缀会让不同类同名同参的方法串味）
+- 因此**接口节点与类节点各记各的**：`IBaseInterface.InitializeFixture` 与 `BaseInterface.InitializeFixture`
+  是两套参数记忆（树的 DeclaredOnly 会同时列出这两处，看起来是同一个功能）
+- 树的类型图标是彩色 emoji（🟦🟩🟧），颜色由字体决定、不随主题变；
+  只有单色字形（⚙ ⚡ ⊞ ▣ 📦）的 Foreground 跟随主题令牌
 - "取消调用"只能取消尚未开始的任务；`MethodBase.Invoke` 是同步阻塞调用，无法中断已在设备侧执行的指令。
   "调用超时"同理：只让界面不再干等并明确提示，设备侧仍在跑 —— **不要因为超时就重复下发动作指令**
 - JSON 高级参数**不支持对象类型**（数组已支持），遇到对象会明确报一条警告并按 null 传入
 - 依赖缺失报告延迟约 400ms 裁决（AssemblyResolve 是多播事件，单个处理器未命中≠解析失败，见 `DependencyResolver.FlushPendingMisses`）
 - "卸载"只清界面与缓存：`Assembly.Load` 无法从 AppDomain 卸载
 - 接口实现必须**可无参构造**，否则仍会失败（会给出明确错误信息）
-- 调用历史未按设备隔离（deviceId 硬编码 `default`）
 - 搜索每次按键全量重建整棵树，大程序集（5MB Costura）下会卡顿
-- `TreeNodeVm.IconColor` 是写死的语法高亮色（`#0078D4` 等），不随主题切换；深色主题下 `#737373`
-  （命名空间 / 字段节点）对比度偏低。要修需要改成资源键 + 解析器，并给两套主题补对应令牌

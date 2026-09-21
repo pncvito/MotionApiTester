@@ -54,7 +54,11 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="机型 DLL:" VerticalAlignment="Center"/>
-                <ComboBox Grid.Column="1" x:Name="CbModelDll"/>
+                <!-- 用 ListBox 而不是 ComboBox：候选机型一般只有 1~3 个，列出来更直观；
+                     而且 ComboBox 的默认模板无视 Background，深色主题下会是一块浅色。
+                     ⚠️ x:Name 保持 CbModelDll 不变，code-behind 的 Items / SelectedItem 用法两种控件一致。 -->
+                <ListBox Grid.Column="1" x:Name="CbModelDll" MaxHeight="80" Margin="0,2"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"/>
             </Grid>
 
             <!-- MachineType -->

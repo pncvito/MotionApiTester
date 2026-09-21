@@ -312,7 +312,10 @@ namespace MotionApiTester.ViewModels
 
             if (!scanResult.HasLtSmc) StatusText += " ⚠️ 缺 LTSMC.dll";
 
-            // ⑦ 依赖体检：把"设备目录缺运行库"一次性说清楚。
+            // ⑦ 调用历史按设备隔离：同一台机器的调用记录才放在一起看
+            SwitchHistoryToDevice(Path.GetFileNameWithoutExtension(modelDll), deviceDir);
+
+            // ⑧ 依赖体检：把"设备目录缺运行库"一次性说清楚。
             //    少了这一步，缺失的依赖要等用户点到某个成员、由 CLR 抛 FileNotFoundException
             //    才暴露，而且一次只暴露栈顶那一个（例：CustomCore 被 Init 引用）。
             ReportMissingDependencies();
@@ -321,6 +324,25 @@ namespace MotionApiTester.ViewModels
             ScanNativeDlls(deviceDir);
             RefreshSearch();
             NotifyAssemblyStats();
+        }
+
+        /// <summary>
+        /// 把调用历史切到当前设备。
+        /// ⚠️ 必须整体替换 `_historyItems` 的内容（它才是界面绑定的那个集合），
+        /// 只改 HistoryService.Items 界面不会有任何变化。
+        /// </summary>
+        private void SwitchHistoryToDevice(string modelDllName, string deviceDir)
+        {
+            var key = !string.IsNullOrWhiteSpace(modelDllName)
+                ? modelDllName
+                : Path.GetFileName(deviceDir.TrimEnd('\\', '/'));
+
+            _historyService.SwitchDevice(key);
+
+            _historyItems.Clear();
+            foreach (var h in _historyService.Items) _historyItems.Add(h);
+
+            AppendLog($"✓ 调用历史切到设备「{_historyService.CurrentDeviceId}」（{_historyItems.Count} 条）");
         }
 
         /// <summary>

@@ -47,10 +47,14 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="日志最大行数:" VerticalAlignment="Center" Margin="0,4,12,4"/>
                         <TextBox Grid.Row="0" Grid.Column="1" x:Name="TbMaxLines" Width="120" HorizontalAlignment="Left" Margin="0,4"/>
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="导出格式:" VerticalAlignment="Center" Margin="0,4,12,4"/>
-                        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="CbExportFormat" Width="120" HorizontalAlignment="Left" Margin="0,4" SelectedIndex="0">
-                            <ComboBoxItem Content="纯文本 (.txt)"/>
-                            <ComboBoxItem Content="JSON (.json)"/>
-                        </ComboBox>
+                        <!-- 用单选而不是 ComboBox：WPF 默认 ComboBox 模板无视 Background，
+                             深色主题下会是一块浅色（要换整个 ControlTemplate 才跟得上主题），
+                             而且这里只有两个选项，单选比下拉更直接。 -->
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4">
+                            <RadioButton x:Name="RbExportTxt" Content="纯文本 (.txt)" GroupName="ExportFormat"
+                                         Margin="0,2,12,2" IsChecked="True"/>
+                            <RadioButton x:Name="RbExportJson" Content="JSON (.json)" GroupName="ExportFormat" Margin="0,2"/>
+                        </StackPanel>
                     </Grid>
                 </Border>
 

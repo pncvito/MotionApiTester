@@ -45,6 +45,9 @@ namespace MotionApiTester.ViewModels
         private readonly ThemeManager _themeManager;
         private readonly DispatcherTimer _logFlushTimer;
 
+        /// <summary>方法参数值记忆（按方法签名记住上次填过的值，选中时自动回填）</summary>
+        private readonly ParameterMemory _paramMemory = new ParameterMemory();
+
         /// <summary>本次加载的程序集(交给 ApiInvoker 解析接口实现)</summary>
         private readonly List<Assembly> _loadedAssemblies = new List<Assembly>();
 
@@ -261,7 +264,7 @@ namespace MotionApiTester.ViewModels
                 if (SetProperty(ref _selectedNativeDll, value))
                 {
                     CommandManager.InvalidateRequerySuggested();
-                    UpdatePInvokeTemplate();
+                    OnSelectedNativeDllChanged();
                 }
             }
         }
@@ -306,6 +309,8 @@ namespace MotionApiTester.ViewModels
         public ICommand CopyPInvokeCommand { get; }
         public ICommand RefreshPInvokeCommand { get; }
         public ICommand RefreshNativeDllsCommand { get; }
+        /// <summary>把上次用过的参数值填回当前方法</summary>
+        public ICommand FillRememberedParamsCommand { get; }
         public ICommand SearchFocusCommand { get; }
 
         // ============== 构造 ==============
@@ -376,6 +381,7 @@ namespace MotionApiTester.ViewModels
             CopyPInvokeCommand = new RelayCommand(CopyPInvoke);
             RefreshPInvokeCommand = new RelayCommand(UpdatePInvokeTemplate);
             RefreshNativeDllsCommand = new RelayCommand(RefreshNativeDlls);
+            FillRememberedParamsCommand = new RelayCommand(FillRememberedParams, () => SelectedMethod?.Target != null);
             SearchFocusCommand = new RelayCommand(SearchFocus);
 
             // 应用主题（窗口还没创建时延后到 Loaded，否则读不到 MainWindow）

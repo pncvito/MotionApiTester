@@ -89,6 +89,7 @@
     <Compile Include="Services\ApiInvoker.cs" />
     <Compile Include="Services\LogService.cs" />
     <Compile Include="Services\HistoryService.cs" />
+    <Compile Include="Services\ParameterMemory.cs" />
     <Compile Include="Services\DeviceManager.cs" />
     <Compile Include="Models\CallHistoryItem.cs" />
     <Compile Include="Models\DeviceProfile.cs" />

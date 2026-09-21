@@ -28,7 +28,8 @@ namespace MotionApiTester.Views
             }
             TbMaxLines.Text = settings.LogRetentionLines.ToString();
             TbTimeout.Text = settings.InvokeTimeoutSeconds.ToString();
-            CbExportFormat.SelectedIndex = settings.ExportFormat == "json" ? 1 : 0;
+            RbExportJson.IsChecked = settings.ExportFormat == "json";
+            RbExportTxt.IsChecked = settings.ExportFormat != "json";
 
             TbDeviceDir.Text = settings.DefaultDeviceDirectory ?? "";
             TbExtraPaths.Text = string.Join(Environment.NewLine,
@@ -61,7 +62,7 @@ namespace MotionApiTester.Views
                                  : "Light";
             ResultSettings.LogRetentionLines = maxLines;
             ResultSettings.InvokeTimeoutSeconds = timeout;
-            ResultSettings.ExportFormat = CbExportFormat.SelectedIndex == 1 ? "json" : "txt";
+            ResultSettings.ExportFormat = RbExportJson.IsChecked == true ? "json" : "txt";
 
             // 目录不做"必须存在"校验：设备目录可能插在别的机器上或暂时不可达，
             // 拦下来只会让人没法先配好路径。空值 = 自动探测（见 DeviceDirectoryResolver）。

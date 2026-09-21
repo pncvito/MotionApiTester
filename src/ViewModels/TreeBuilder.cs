@@ -12,20 +12,12 @@ namespace MotionApiTester.ViewModels
     ///
     /// 纯数据转换：不触碰 UI、不持有 ViewModel 状态，仅依赖传入的 keyword 参数，
     /// 因此可以脱离窗口单独验证。
+    ///
+    /// 节点配色<b>不在这里决定</b>：这里只给 NodeKind / Badge，颜色由 MainWindow.xaml 的
+    /// 节点模板用 DataTrigger 映射到主题令牌（原先写死的 #737373 等语法高亮色在深色主题下对比度不够）。
     /// </summary>
     public class TreeBuilder
     {
-        // 节点图标配色。这是随主题固定的语法高亮色（绑到 TreeViewItem 的 Foreground），
-        // 不属于主题令牌体系；若后续要支持深色主题下的对比度，需要改成资源键 + 解析器。
-        private const string ColorBlue = "#0078D4";
-        private const string ColorInterface = "#107C10";
-        private const string ColorStruct = "#2B88D8";
-        private const string ColorEnum = "#CA5010";
-        private const string ColorProperty = "#8764B8";
-        private const string ColorField = "#737373";
-        private const string ColorStatic = "#CA5010";
-        private const string ColorNamespace = "#737373";
-
         /// <summary>成员类叶子节点：搜索裁剪时据此判断"不匹配即可整体丢弃"</summary>
         private static readonly HashSet<string> MemberKinds = new HashSet<string>(StringComparer.Ordinal)
         {
@@ -76,7 +68,6 @@ namespace MotionApiTester.ViewModels
             {
                 Label = Path.GetFileName(asm.Path) + (asm.Version != null ? $" v{asm.Version}" : ""),
                 Icon = "⊞",
-                IconColor = ColorBlue,
                 NodeKind = "Assembly",
                 Badge = asm.IsCostura ? $"📦 Costura · {asm.EmbeddedCount} 嵌入" : "",
                 Payload = asm
@@ -100,7 +91,6 @@ namespace MotionApiTester.ViewModels
                     {
                         Label = nsGroup.Key,
                         Icon = "📦",
-                        IconColor = ColorNamespace,
                         NodeKind = "Namespace"
                     };
                     asmNode.Children.Add(nsNode);
@@ -120,7 +110,6 @@ namespace MotionApiTester.ViewModels
             {
                 Label = t.Name,
                 Icon = TypeIcon(t.Kind),
-                IconColor = TypeColor(t.Kind),
                 NodeKind = "Type",
                 Badge = t.Kind,
                 Payload = t
@@ -128,23 +117,21 @@ namespace MotionApiTester.ViewModels
 
             if (t.Constructors.Count > 0)
             {
-                var grp = NewGroup("构造函数", "🔷", ColorBlue);
+                var grp = NewGroup("构造函数", "🔷");
                 foreach (var ctor in t.Constructors)
-                {
-                    grp.Children.Add(NewMember(ctor.Signature, "🔷", ColorBlue, "Constructor", ctor));
-                }
+                    grp.Children.Add(NewMember(ctor.Signature, "🔷", "Constructor", ctor));
+
                 typeNode.Children.Add(grp);
             }
 
             if (t.Methods.Count > 0)
             {
-                var grp = NewGroup($"方法 ({t.Methods.Count})", "⚙", ColorStatic);
+                var grp = NewGroup($"方法 ({t.Methods.Count})", "⚙");
                 foreach (var m in t.Methods)
                 {
                     grp.Children.Add(NewMember(
                         m.Signature,
                         m.IsStatic ? "⚡" : "⚙",
-                        m.IsStatic ? ColorStatic : ColorBlue,
                         m.IsStatic ? "StaticMethod" : "InstanceMethod",
                         m));
                 }
@@ -153,41 +140,37 @@ namespace MotionApiTester.ViewModels
 
             if (t.Properties.Count > 0)
             {
-                var grp = NewGroup($"属性 ({t.Properties.Count})", "🔮", ColorProperty);
+                var grp = NewGroup($"属性 ({t.Properties.Count})", "🔮");
                 foreach (var p in t.Properties)
-                {
-                    grp.Children.Add(NewMember(p.Signature, "🔮", ColorProperty, "Property", p));
-                }
+                    grp.Children.Add(NewMember(p.Signature, "🔮", "Property", p));
+
                 typeNode.Children.Add(grp);
             }
 
             if (t.Fields.Count > 0)
             {
-                var grp = NewGroup($"字段 ({t.Fields.Count})", "▣", ColorField);
+                var grp = NewGroup($"字段 ({t.Fields.Count})", "▣");
                 foreach (var f in t.Fields)
-                {
-                    grp.Children.Add(NewMember(f.Signature, "▣", ColorField, "Field", f));
-                }
+                    grp.Children.Add(NewMember(f.Signature, "▣", "Field", f));
+
                 typeNode.Children.Add(grp);
             }
 
             return typeNode;
         }
 
-        private static TreeNodeVm NewGroup(string label, string icon, string color) => new TreeNodeVm
+        private static TreeNodeVm NewGroup(string label, string icon) => new TreeNodeVm
         {
             Label = label,
             Icon = icon,
-            IconColor = color,
             NodeKind = "Group"
         };
 
-        private static TreeNodeVm NewMember(string label, string icon, string color, string nodeKind, object payload)
+        private static TreeNodeVm NewMember(string label, string icon, string nodeKind, object payload)
             => new TreeNodeVm
             {
                 Label = label,
                 Icon = icon,
-                IconColor = color,
                 NodeKind = nodeKind,
                 Payload = payload
             };
@@ -233,17 +216,6 @@ namespace MotionApiTester.ViewModels
                 case "struct": return "🟦";
                 case "enum": return "🟧";
                 default: return "🟦"; // class
-            }
-        }
-
-        private static string TypeColor(string kind)
-        {
-            switch (kind?.ToLowerInvariant())
-            {
-                case "interface": return ColorInterface;
-                case "struct": return ColorStruct;
-                case "enum": return ColorEnum;
-                default: return ColorBlue; // class
             }
         }
     }

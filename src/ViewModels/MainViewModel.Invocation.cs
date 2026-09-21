@@ -37,6 +37,9 @@ namespace MotionApiTester.ViewModels
                 Timestamp = DateTime.Now
             });
 
+            // 只有成功的调用才值得记住 —— 失败多半是参数本身有问题，记下来会一直沿用错的
+            if (result.Success) RememberParameters(method);
+
             LastElapsedMs = result.ElapsedMs;
             LastCallTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
             ResultSuccessFlag = result.Success;
@@ -194,6 +197,9 @@ namespace MotionApiTester.ViewModels
             // 换了选中项，上一组 JSON 参数不再适用，清空避免误调用
             JsonArgsOverride = "";
 
+            // 用记忆里的参数值回填（设备调试的日常就是反复调同样的方法、填同样的参数）
+            ApplyRememberedParameters(node?.Method, force: false);
+
             if (node?.Method != null) SignatureText = node.Method.Signature;
             else if (node?.Property != null) SignatureText = node.Property.Signature;
             else if (node?.Field != null) SignatureText = node.Field.Signature;
@@ -247,6 +253,101 @@ namespace MotionApiTester.ViewModels
             }
 
             return deps;
+        }
+
+        // ============== 参数值记忆 ==============
+
+        /// <summary>
+        /// 参数记忆的键 = 声明类型全名 + <c>MethodBase.ToString()</c>。
+        ///
+        /// <para>⚠️ <c>MethodBase.ToString()</c> **不含声明类型**（实测输出形如
+        /// <c>Boolean InitializeFixture(System.Action`1[System.String], System.String)</c>），
+        /// 只用它会串味 —— 不同类的同名同参方法（构造函数最典型：都是 <c>Void .ctor(...)</c>）
+        /// 会共用一份记忆。所以要自己把声明类型拼在前面。</para>
+        /// </summary>
+        private static string SignatureOf(ApiMethod method)
+        {
+            var target = method?.Target;
+            if (target == null) return "";
+
+            var declaring = target.DeclaringType?.FullName ?? "?";
+            return declaring + "::" + target;
+        }
+
+        /// <summary>把本次调用用过的参数值记下来（下次选中同一方法时自动回填）</summary>
+        private void RememberParameters(ApiMethod method)
+        {
+            var signature = SignatureOf(method);
+            if (string.IsNullOrEmpty(signature)) return;
+
+            _paramMemory.Remember(signature, method.Parameters.Select(p =>
+                new RememberedParameters.ParameterValue
+                {
+                    Name = p.Name,
+                    Value = p.Value,
+                    PassNull = p.PassNull
+                }));
+        }
+
+        /// <summary>
+        /// 用记忆里的值回填参数。
+        /// <paramref name="force"/> 为 false 时只填空着的参数（不覆盖用户正在输入的内容）；
+        /// 为 true 时强制覆盖（对应「🕘 回填上次」按钮）。
+        /// </summary>
+        private void ApplyRememberedParameters(ApiMethod method, bool force)
+        {
+            if (method?.Target == null) return;
+
+            var remembered = _paramMemory.Get(SignatureOf(method));
+            if (remembered == null) return;
+
+            int applied = 0;
+            foreach (var p in method.Parameters)
+            {
+                if (p.IsLogger) continue;
+
+                if (remembered.Nulls.Contains(p.Name))
+                {
+                    if (force || (!p.PassNull && string.IsNullOrEmpty(p.Value)))
+                    {
+                        p.PassNull = true;
+                        p.Value = "";
+                        applied++;
+                    }
+                    continue;
+                }
+
+                if (!remembered.Values.TryGetValue(p.Name, out var value)) continue;
+                if (!force && (!string.IsNullOrEmpty(p.Value) || p.PassNull)) continue;
+
+                p.PassNull = false;
+                p.Value = value;
+                applied++;
+            }
+
+            // 明确写一条日志：否则"参数自己冒出来了"会让人以为是界面出了 bug
+            if (applied > 0)
+                AppendLog($"🕘 已回填上次的参数值（{applied} 个）：{method.FullName}");
+        }
+
+        /// <summary>「🕘 回填上次」：强制用记忆里的值覆盖当前输入</summary>
+        private void FillRememberedParams()
+        {
+            var method = SelectedMethod;
+            if (method?.Target == null)
+            {
+                StatusText = "⚠️ 未选中方法";
+                return;
+            }
+
+            if (_paramMemory.Get(SignatureOf(method)) == null)
+            {
+                StatusText = "⚠️ 这个方法还没有参数记忆（成功调用一次就会自动记住）";
+                return;
+            }
+
+            ApplyRememberedParameters(method, force: true);
+            StatusText = "🕘 已回填上次用过的参数值";
         }
     }
 }

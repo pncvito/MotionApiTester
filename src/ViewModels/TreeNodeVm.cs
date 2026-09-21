@@ -15,8 +15,13 @@ namespace MotionApiTester.ViewModels
 
         public string Label { get; set; } = "";
         public string Icon { get; set; } = "";
-        public string IconColor { get; set; } = "#0078D4";
-        public string NodeKind { get; set; } = ""; // Assembly/Namespace/Type/Group/Method/Property/Field/Constructor
+
+        /// <summary>
+        /// 节点种类：Assembly / Namespace / Type / Group / Constructor / InstanceMethod / StaticMethod /
+        /// Property / Field。图标配色由 MainWindow.xaml 的节点模板按它（以及 <see cref="Badge"/> 里的
+        /// class / interface / struct / enum）映射到主题令牌 —— 这里不再携带写死的颜色。
+        /// </summary>
+        public string NodeKind { get; set; } = "";
         public string Badge { get; set; } = "";
         public object Payload { get; set; } // 原始数据(ApiMethod/ApiProperty/ApiField/ApiType/ApiAssembly)
 

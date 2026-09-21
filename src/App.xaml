@@ -8,7 +8,11 @@
                 <ResourceDictionary Source="Themes/LightTheme.xaml"/>
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- 全局样式 -->
+            <!-- 全局样式。
+                 ⚠️ 输入类控件必须在这里显式给出颜色：WPF 默认模板用的是**系统色**
+                 （SystemColors.WindowBrush 等），不跟本应用的主题走 ——
+                 不写就会出现"深色主题里冒出白色输入框"（设置窗口、设备向导尤其明显）。
+                 用 DynamicResource，切换主题时会自动重取。 -->
             <Style TargetType="Button">
                 <Setter Property="Padding" Value="8,4"/>
                 <Setter Property="MinHeight" Value="24"/>
@@ -16,10 +20,26 @@
 
             <Style TargetType="TextBox">
                 <Setter Property="Padding" Value="4,2"/>
+                <Setter Property="Background" Value="{DynamicResource BackgroundBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+                <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
+                <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}"/>
+            </Style>
+
+            <!-- ⚠️ 这里刻意没有 ComboBox 样式：WPF 默认 ComboBox 模板不理会 Background
+                 （实测深色主题下仍是浅色 chrome），要跟主题必须整个换 ControlTemplate。
+                 所以本应用不再使用 ComboBox：导出格式改用单选按钮、向导的机型 DLL 改用 ListBox。 -->
+
+            <Style TargetType="ListBox">
+                <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
             </Style>
 
             <Style TargetType="GroupBox">
                 <Setter Property="Padding" Value="6"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             </Style>
         </ResourceDictionary>
     </Application.Resources>

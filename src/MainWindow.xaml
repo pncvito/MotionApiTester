@@ -67,10 +67,48 @@
             <Setter Property="BorderBrush" Value="{DynamicResource DangerFgBrush}"/>
         </Style>
 
-        <!-- 树节点模板 -->
+        <!-- 树节点模板。
+             图标配色全部走主题令牌，按 NodeKind / Badge 用 DataTrigger 映射 ——
+             原先 TreeNodeVm.IconColor 里写死 #0078D4 / #737373 等语法高亮色，
+             深色主题下命名空间与字段节点对比度过低。 -->
         <HierarchicalDataTemplate DataType="{x:Type vm:TreeNodeVm}" ItemsSource="{Binding Children}">
             <StackPanel Orientation="Horizontal" Margin="2,1">
-                <TextBlock Text="{Binding Icon}" Foreground="{Binding IconColor}" Width="18" TextAlignment="Center"/>
+                <TextBlock Text="{Binding Icon}" Width="18" TextAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{DynamicResource SubTextBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding NodeKind}" Value="Assembly">
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding NodeKind}" Value="InstanceMethod">
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding NodeKind}" Value="Constructor">
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding NodeKind}" Value="StaticMethod">
+                                    <Setter Property="Foreground" Value="{DynamicResource WarnFgBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding NodeKind}" Value="Property">
+                                    <Setter Property="Foreground" Value="{DynamicResource PurpleFgBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Badge}" Value="class">
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Badge}" Value="interface">
+                                    <Setter Property="Foreground" Value="{DynamicResource SuccessFgBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Badge}" Value="struct">
+                                    <Setter Property="Foreground" Value="{DynamicResource InfoFgBrush}"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Badge}" Value="enum">
+                                    <Setter Property="Foreground" Value="{DynamicResource WarnFgBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding Badge}" Margin="6,0,0,0" Foreground="{DynamicResource SubTextBrush}" FontSize="10" VerticalAlignment="Center"/>
             </StackPanel>
@@ -396,8 +434,12 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding SelectedMethod.Parameters.Count, StringFormat='参数 ({0})'}" FontWeight="SemiBold" Foreground="{DynamicResource SubTextBrush}"/>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <Button Content="📋 填默认" Style="{StaticResource BtnBase}" Click="BtnFillDefaults_Click"/>
-                                            <Button Content="🗑 清空" Style="{StaticResource BtnBase}" Click="BtnClearParams_Click"/>
+                                            <Button Content="📋 填默认" Style="{StaticResource BtnBase}" Click="BtnFillDefaults_Click"
+                                                    ToolTip="填入方法签名里的默认值（可选参数）"/>
+                                            <Button Content="🕘 回填上次" Style="{StaticResource BtnBase}" Command="{Binding FillRememberedParamsCommand}"
+                                                    ToolTip="把上次成功调用时用过的参数值填回来（选择方法时也会自动回填空着的参数）"/>
+                                            <Button Content="🗑 清空" Style="{StaticResource BtnBase}" Click="BtnClearParams_Click"
+                                                    ToolTip="清空所有参数输入"/>
                                         </StackPanel>
                                     </Grid>
                                     <ItemsControl ItemsSource="{Binding SelectedMethod.Parameters}">
@@ -642,38 +684,95 @@
                         </ListBox.ItemTemplate>
                             </ListBox>
                         </TabItem>
-                        <!-- 原生 DLL:枚举 + P/Invoke 模板(不调用) -->
+                        <!-- 原生 DLL：DLL 列表 + 导出函数表 + P/Invoke 模板（只读解析，绝不加载 DLL） -->
                         <TabItem Header="原生 DLL">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*" MinHeight="60"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
-                                <ListBox Grid.Row="0" ItemsSource="{Binding NativeDlls}" SelectedItem="{Binding SelectedNativeDll}"
+
+                                <!-- DLL 列表（不再占满整栏：下面还要放导出函数） -->
+                                <Grid Grid.Row="0">
+                                    <ListBox MaxHeight="92" ItemsSource="{Binding NativeDlls}" SelectedItem="{Binding SelectedNativeDll}"
+                                             Background="Transparent" BorderThickness="0"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                             Visibility="{Binding HasNativeDlls, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="8,6" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Name}" FontFamily="Consolas" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                            <Border Background="{DynamicResource InfoBgBrush}" Padding="5,1" CornerRadius="8">
+                                                                <TextBlock Text="{Binding Architecture}" Foreground="{DynamicResource InfoFgBrush}" FontSize="10" FontWeight="SemiBold"/>
+                                                            </Border>
+                                                            <Border Background="{DynamicResource NeutralBgBrush}" Padding="5,1" CornerRadius="8" Margin="4,0,0,0">
+                                                                <TextBlock Text="{Binding Role}" Foreground="{DynamicResource NeutralFgBrush}" FontSize="10"/>
+                                                            </Border>
+                                                            <Border Background="{DynamicResource PurpleBgBrush}" Padding="5,1" CornerRadius="8" Margin="4,0,0,0">
+                                                                <TextBlock Text="{Binding ExportSummary}" Foreground="{DynamicResource PurpleFgBrush}" FontSize="10"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock Text="未发现原生 DLL" Foreground="{DynamicResource SubTextBrush}" FontSize="12"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Visibility="{Binding HasNativeDlls, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                                </Grid>
+
+                                <!-- 导出函数：选中一个即可按它生成模板 -->
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="8,8,8,4"
+                                            Visibility="{Binding HasNativeDlls, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Text="导出函数" FontWeight="SemiBold" FontSize="11" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding NativeExportSummary}" FontSize="10" Margin="6,0,0,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource SubTextBrush}"/>
+                                </StackPanel>
+                                <TextBox Grid.Row="2" Margin="8,0,8,4"
+                                         Text="{Binding NativeExportFilter, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                                         ToolTip="按函数名或序号过滤（导出表解析自 PE，只读文件、不加载 DLL）"
+                                         Visibility="{Binding HasNativeExports, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <ListBox Grid.Row="3" Margin="8,0" ItemsSource="{Binding NativeExports}"
+                                         SelectedItem="{Binding SelectedNativeExport}"
+                                         FontFamily="Consolas" FontSize="11"
                                          Background="Transparent" BorderThickness="0"
-                                         Visibility="{Binding HasNativeDlls, Converter={StaticResource BoolToVisibilityConverter}}">
+                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                         Visibility="{Binding HasNativeExports, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <Border Padding="8,6" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Name}" FontFamily="Consolas" FontSize="12" TextTrimming="CharacterEllipsis"/>
-                                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                                        <Border Background="{DynamicResource InfoBgBrush}" Padding="5,1" CornerRadius="8">
-                                                            <TextBlock Text="{Binding Architecture}" Foreground="{DynamicResource InfoFgBrush}" FontSize="10" FontWeight="SemiBold"/>
-                                                        </Border>
-                                                        <Border Background="{DynamicResource NeutralBgBrush}" Padding="5,1" CornerRadius="8" Margin="4,0,0,0">
-                                                            <TextBlock Text="{Binding Role}" Foreground="{DynamicResource NeutralFgBrush}" FontSize="10"/>
-                                                        </Border>
-                                                    </StackPanel>
-                                                </StackPanel>
-                                            </Border>
+                                            <TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding DisplayText}"/>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
-                                <TextBlock Grid.Row="0" Text="未发现原生 DLL" Foreground="{DynamicResource SubTextBrush}" FontSize="12"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           Visibility="{Binding HasNativeDlls, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
-                                <Grid Grid.Row="1" Margin="8,6">
+                                <!-- 空状态：有 DLL 但解析不出导出表（两个条件都满足才显示） -->
+                                <TextBlock Grid.Row="3" Text="这个 DLL 没有导出表，或解析不出" FontSize="11"
+                                           Foreground="{DynamicResource SubTextBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding HasNativeDlls}" Value="True"/>
+                                                        <Condition Binding="{Binding HasNativeExports}" Value="False"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- P/Invoke 模板 -->
+                                <Grid Grid.Row="4" Margin="8,6">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
@@ -681,7 +780,7 @@
                                     </Grid.RowDefinitions>
                                     <TextBlock Text="P/Invoke 模板" FontSize="11" Foreground="{DynamicResource SubTextBrush}" Margin="0,0,0,4"/>
                                     <TextBox Grid.Row="1" Text="{Binding PInvokeTemplate, Mode=OneWay}" IsReadOnly="True"
-                                             FontFamily="Consolas" FontSize="11" Height="110" AcceptsReturn="True"
+                                             FontFamily="Consolas" FontSize="11" Height="104" AcceptsReturn="True"
                                              TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                              Background="{DynamicResource CodeBgBrush}" Foreground="{DynamicResource CodeFgBrush}"
                                              BorderBrush="{DynamicResource BorderBrush}"/>

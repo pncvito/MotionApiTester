@@ -1,0 +1,26 @@
+# ===== 构建产物 =====
+# 覆盖 src/bin、src/obj 以及根目录的 Bin（设备 DLL 存放目录）
+[Bb]in/
+[Oo]bj/
+*.pdb
+*.dll.config
+
+# ===== IDE / VS =====
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.csproj.user
+
+# ===== 编译校验临时工程（见 CLAUDE.md） =====
+.verify/
+
+# ===== 临时日志 =====
+build-verify.log
+restore-verify.log
+*.log
+
+# ===== 工作区临时文件 =====
+Thumbs.db
+desktop.ini

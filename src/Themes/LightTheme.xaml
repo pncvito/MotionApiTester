@@ -1,0 +1,67 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 浅色主题 -->
+    <Color x:Key="BackgroundColor">#F3F3F3</Color>
+    <Color x:Key="PanelColor">#FFFFFF</Color>
+    <Color x:Key="TextColor">#1F1F1F</Color>
+    <Color x:Key="SubTextColor">#605E5C</Color>
+    <Color x:Key="AccentColor">#0078D4</Color>
+    <Color x:Key="BorderColor">#E0E0E0</Color>
+
+    <!-- 状态栏 / 底部信息栏 -->
+    <Color x:Key="StatusBarColor">#F0F0F0</Color>
+    <Color x:Key="BottomBarColor">#F8F8F8</Color>
+
+    <!-- 日志面板 -->
+    <Color x:Key="LogBackgroundColor">#FAFAFA</Color>
+    <Color x:Key="LogForegroundColor">#1F1F1F</Color>
+
+    <!-- 选中行 -->
+    <Color x:Key="RowSelectedColor">#E5F1FB</Color>
+
+    <!-- 语义色:成功 / 危险 / 警告 / 信息 / 紫 / 中性 / 代码块 -->
+    <Color x:Key="SuccessBgColor">#DFF6DD</Color>
+    <Color x:Key="SuccessFgColor">#0B5A0B</Color>
+    <Color x:Key="DangerBgColor">#FDE7E9</Color>
+    <Color x:Key="DangerFgColor">#A4262C</Color>
+    <Color x:Key="WarnBgColor">#FFF4CE</Color>
+    <Color x:Key="WarnFgColor">#A17500</Color>
+    <Color x:Key="InfoBgColor">#DEECF9</Color>
+    <Color x:Key="InfoFgColor">#0078D4</Color>
+    <Color x:Key="PurpleBgColor">#F3E2FF</Color>
+    <Color x:Key="PurpleFgColor">#8764B8</Color>
+    <Color x:Key="NeutralBgColor">#E1DFDD</Color>
+    <Color x:Key="NeutralFgColor">#3B3A39</Color>
+    <Color x:Key="CodeBgColor">#FAFAFA</Color>
+    <Color x:Key="CodeFgColor">#24292F</Color>
+
+    <!-- Brushes -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
+    <SolidColorBrush x:Key="PanelBrush" Color="{StaticResource PanelColor}"/>
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="SubTextBrush" Color="{StaticResource SubTextColor}"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+    <SolidColorBrush x:Key="StatusBarBrush" Color="{StaticResource StatusBarColor}"/>
+    <SolidColorBrush x:Key="BottomBarBrush" Color="{StaticResource BottomBarColor}"/>
+    <SolidColorBrush x:Key="LogBackgroundBrush" Color="{StaticResource LogBackgroundColor}"/>
+    <SolidColorBrush x:Key="LogForegroundBrush" Color="{StaticResource LogForegroundColor}"/>
+    <SolidColorBrush x:Key="RowSelectedBrush" Color="{StaticResource RowSelectedColor}"/>
+
+    <SolidColorBrush x:Key="SuccessBgBrush" Color="{StaticResource SuccessBgColor}"/>
+    <SolidColorBrush x:Key="SuccessFgBrush" Color="{StaticResource SuccessFgColor}"/>
+    <SolidColorBrush x:Key="DangerBgBrush" Color="{StaticResource DangerBgColor}"/>
+    <SolidColorBrush x:Key="DangerFgBrush" Color="{StaticResource DangerFgColor}"/>
+    <SolidColorBrush x:Key="WarnBgBrush" Color="{StaticResource WarnBgColor}"/>
+    <SolidColorBrush x:Key="WarnFgBrush" Color="{StaticResource WarnFgColor}"/>
+    <SolidColorBrush x:Key="InfoBgBrush" Color="{StaticResource InfoBgColor}"/>
+    <SolidColorBrush x:Key="InfoFgBrush" Color="{StaticResource InfoFgColor}"/>
+    <SolidColorBrush x:Key="PurpleBgBrush" Color="{StaticResource PurpleBgColor}"/>
+    <SolidColorBrush x:Key="PurpleFgBrush" Color="{StaticResource PurpleFgColor}"/>
+    <SolidColorBrush x:Key="NeutralBgBrush" Color="{StaticResource NeutralBgColor}"/>
+    <SolidColorBrush x:Key="NeutralFgBrush" Color="{StaticResource NeutralFgColor}"/>
+    <SolidColorBrush x:Key="CodeBgBrush" Color="{StaticResource CodeBgColor}"/>
+    <SolidColorBrush x:Key="CodeFgBrush" Color="{StaticResource CodeFgColor}"/>
+
+</ResourceDictionary>

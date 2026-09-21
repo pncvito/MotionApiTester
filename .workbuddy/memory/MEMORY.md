@@ -17,6 +17,11 @@
   `TreeViewItem` 样式，导致选中行高亮失效。
 - 内置 `BooleanToVisibilityConverter` **忽略 ConverterParameter**，需要反向可见性时
   必须用自定义的 `InverseBoolToVisibilityConverter`。
+- **不使用自绘标题栏**：窗口标题由系统标题栏承担（`Window.Title`），应用内不再画第二条件。
+  `MainWindow.xaml` 顶层 `Grid` 共 **5 行**：`0` 工具栏 / `1` 状态栏 / `2` 弹性行 /
+  `3` 实时日志 Expander / `4` 底部状态栏；新增顶层元素时行索引上限为 4。
+  机型文本（`MachineTypeText`）挂在状态栏右端。主内容三栏用 `Grid.Row=1 RowSpan=3` +
+  `Margin="0,28,0,23"` 覆盖式叠在状态栏与日志之上（脆弱，改动布局时留意）。
 
 ## 架构约定（第三轮重构后）
 

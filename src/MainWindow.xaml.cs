@@ -211,6 +211,15 @@ namespace MotionApiTester
             if (Vm != null) Vm.JsonArgsOverride = "";
         }
 
+        // ============== 窗口控制(无系统标题栏,按钮在自绘标题栏内) ==============
+        private void BtnMinimize_Click(object sender, RoutedEventArgs e)
+            => WindowState = WindowState.Minimized;
+
+        private void BtnMaximize_Click(object sender, RoutedEventArgs e)
+            => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+        private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
+
         /// <summary>由 ViewModel.SearchFocusCommand 调用(Ctrl+F)</summary>
         public void FocusSearchBox()
         {

@@ -20,6 +20,10 @@
     <!-- 选中行 -->
     <Color x:Key="RowSelectedColor">#E5F1FB</Color>
 
+    <!-- 窗口标题栏按钮(无系统标题栏,按钮自绘) -->
+    <Color x:Key="TitleBarBtnHoverColor">#E1E1E1</Color>
+    <Color x:Key="CloseHoverColor">#E81123</Color>
+
     <!-- 语义色:成功 / 危险 / 警告 / 信息 / 紫 / 中性 / 代码块 -->
     <Color x:Key="SuccessBgColor">#DFF6DD</Color>
     <Color x:Key="SuccessFgColor">#0B5A0B</Color>
@@ -48,6 +52,8 @@
     <SolidColorBrush x:Key="LogBackgroundBrush" Color="{StaticResource LogBackgroundColor}"/>
     <SolidColorBrush x:Key="LogForegroundBrush" Color="{StaticResource LogForegroundColor}"/>
     <SolidColorBrush x:Key="RowSelectedBrush" Color="{StaticResource RowSelectedColor}"/>
+    <SolidColorBrush x:Key="TitleBarBtnHoverBrush" Color="{StaticResource TitleBarBtnHoverColor}"/>
+    <SolidColorBrush x:Key="CloseHoverBrush" Color="{StaticResource CloseHoverColor}"/>
 
     <SolidColorBrush x:Key="SuccessBgBrush" Color="{StaticResource SuccessBgColor}"/>
     <SolidColorBrush x:Key="SuccessFgBrush" Color="{StaticResource SuccessFgColor}"/>

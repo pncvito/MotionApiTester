@@ -5,12 +5,15 @@
 用法：
     python tools/verify-structure.py
 
-做三件事：
+做四件事：
   1. XAML 里每个 {Binding Xxx} 的根标识符，必须在 C# 里有 public 声明。
      —— partial 拆分 / 重命名 / 删成员都不会报编译错误，绑定失效是静默的。
+     只指向 DataContext 的绑定参与检查：带 RelativeSource / ElementName / Source= 的跳过。
   2. csproj 的 Compile/Page 清单与磁盘文件必须互相覆盖。
      —— 旧格式 csproj 漏登记只会静默不参与编译（AssemblyInfo.cs 就漏过）。
   3. 已删除的成员不应在任何 .cs 里残留引用。
+  4. XAML 里的事件处理器（Click="Xxx" 等）必须在对应 code-behind 中存在。
+     —— 写错名字不会报编译错误，运行时抛 XamlParseException。
 
 退出码非 0 表示发现问题。
 """
@@ -29,6 +32,14 @@ REMOVED_MEMBERS = [
     'TryDequeueLog', 'OnLog',
 ]
 
+# 需要在 code-behind 里有同名方法的 XAML 事件属性
+EVENT_ATTRS = [
+    'Click', 'SelectionChanged', 'MouseDown', 'MouseUp', 'MouseDoubleClick',
+    'MouseLeftButtonDown', 'MouseRightButtonDown', 'TextChanged', 'Loaded',
+    'Checked', 'Unchecked', 'Drop', 'DragOver', 'GotFocus', 'LostFocus',
+    'StateChanged', 'Closing', 'Closed', 'KeyDown', 'KeyUp', 'ContextMenuOpening',
+]
+
 
 def source_files():
     for p in glob.glob(os.path.join(SRC, '**', '*.cs'), recursive=True):
@@ -44,10 +55,14 @@ def xaml_files():
         yield p
 
 
+def read(path):
+    return open(path, encoding='utf-8-sig').read()
+
+
 def collect_public_members():
     names = set()
     for path in source_files():
-        text = open(path, encoding='utf-8-sig').read()
+        text = read(path)
         # public [static] [readonly] <Type> Name { | ( | = | ;
         names.update(re.findall(
             r'^\s*public\s+(?:static\s+|readonly\s+|virtual\s+|override\s+|async\s+|partial\s+)*'
@@ -57,24 +72,81 @@ def collect_public_members():
     return names
 
 
+def iter_bindings(text):
+    """产出每个 {Binding ...} 的完整表达式（按花括号配平，支持嵌套 RelativeSource={...}）。"""
+    for m in re.finditer(r'\{Binding\b', text):
+        start = m.start()
+        depth = 0
+        i = start
+        while i < len(text):
+            ch = text[i]
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        yield text[start:i + 1]
+
+
+def binding_root(body):
+    """从 {Binding 之后的表达式里取出绑定的根标识符；取不到返回空串。"""
+    m = re.search(r'\bPath\s*=\s*([^,}]*)', body)
+    if m:
+        raw = m.group(1)
+    else:
+        raw = ''
+        for part in body.split(','):
+            part = part.strip()
+            if part and '=' not in part:
+                raw = part
+                break
+    return raw.strip().strip('{}').split('.')[0].split('[')[0].strip()
+
+
 def check_bindings(members):
     problems = []
     checked = 0
     for path in xaml_files():
-        text = open(path, encoding='utf-8-sig').read()
-        for m in re.finditer(r'\{Binding\s+(?:Path=)?([^},]*)', text):
-            root = m.group(1).strip().split('.')[0].split('[')[0].strip()
-            if not root or root in ('RelativeSource', 'ElementName'):
+        for expr in iter_bindings(read(path)):
+            body = expr[len('{Binding'):].strip()
+            # 不指向 DataContext 的绑定：绑定到元素自身 / 具名元素 / 指定源
+            if re.search(r'\b(RelativeSource|ElementName|Source)\s*=', body):
+                continue
+            root = binding_root(body)
+            if not root:
                 continue
             checked += 1
             if root not in members:
-                problems.append('%s: {Binding %s} 在 C# 中找不到 public 成员' % (os.path.basename(path), root))
+                problems.append('%s: {Binding %s} 在 C# 中找不到 public 成员'
+                                % (os.path.relpath(path, SRC), root))
+    return checked, sorted(set(problems))
+
+
+def check_event_handlers():
+    problems = []
+    checked = 0
+    for path in xaml_files():
+        codebehind = path + '.cs'
+        if not os.path.exists(codebehind):
+            continue
+        code = read(codebehind)
+        text = read(path)
+        for attr in EVENT_ATTRS:
+            for m in re.finditer(r'\b%s="([A-Za-z_]\w*)"' % attr, text):
+                name = m.group(1)
+                checked += 1
+                if not re.search(r'\b(?:void|Task|async)\s+' + name + r'\s*\(', code):
+                    problems.append('%s: %s="%s" 在 %s 中找不到对应方法'
+                                    % (os.path.relpath(path, SRC), attr, name,
+                                       os.path.basename(codebehind)))
     return checked, sorted(set(problems))
 
 
 def check_project_items():
     proj_path = os.path.join(SRC, 'MotionApiTester.csproj')
-    proj = open(proj_path, encoding='utf-8-sig').read()
+    proj = read(proj_path)
 
     listed = set()
     for tag in ('Compile', 'Page', 'ApplicationDefinition', 'Resource'):
@@ -101,8 +173,7 @@ def check_removed_members():
     problems = []
     for name in REMOVED_MEMBERS:
         for path in source_files():
-            text = open(path, encoding='utf-8-sig').read()
-            if re.search(r'\b' + name + r'\b', text):
+            if re.search(r'\b' + name + r'\b', read(path)):
                 problems.append('已删除成员 %s 仍被 %s 引用' % (name, os.path.relpath(path, SRC)))
     return problems
 
@@ -135,9 +206,14 @@ def main():
     for p in removed_problems:
         print('    ' + p)
 
+    checked_ev, event_problems = check_event_handlers()
+    print('[4] 事件处理器：检查 %d 处，问题 %d 个' % (checked_ev, len(event_problems)))
+    for p in event_problems:
+        print('    ' + p)
+
     print_sizes()
 
-    total = len(bind_problems) + len(proj_problems) + len(removed_problems)
+    total = len(bind_problems) + len(proj_problems) + len(removed_problems) + len(event_problems)
     print('\n结果：%s' % ('全部通过' if total == 0 else '%d 个问题' % total))
     return 1 if total else 0
 

@@ -1,8 +1,12 @@
+<!-- 高度随内容自适应；上限取屏幕最大化的高度，避免在小屏笔记本上超出屏幕
+     （超出时由内部 ScrollViewer 接管滚动，不会丢内容） -->
 <Window x:Class="MotionApiTester.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="设置"
-        Height="640" Width="520"
+        Width="520"
+        SizeToContent="Height"
+        MaxHeight="{x:Static SystemParameters.MaximizedPrimaryScreenHeight}"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="{DynamicResource BackgroundBrush}"

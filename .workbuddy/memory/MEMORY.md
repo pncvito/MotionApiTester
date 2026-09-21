@@ -17,11 +17,16 @@
   `TreeViewItem` 样式，导致选中行高亮失效。
 - 内置 `BooleanToVisibilityConverter` **忽略 ConverterParameter**，需要反向可见性时
   必须用自定义的 `InverseBoolToVisibilityConverter`。
-- **不使用自绘标题栏**：窗口标题由系统标题栏承担（`Window.Title`），应用内不再画第二条件。
-  `MainWindow.xaml` 顶层 `Grid` 共 **5 行**：`0` 工具栏 / `1` 状态栏 / `2` 弹性行 /
-  `3` 实时日志 Expander / `4` 底部状态栏；新增顶层元素时行索引上限为 4。
-  机型文本（`MachineTypeText`）挂在状态栏右端。主内容三栏用 `Grid.Row=1 RowSpan=3` +
-  `Margin="0,28,0,23"` 覆盖式叠在状态栏与日志之上（脆弱，改动布局时留意）。
+- **窗口不使用系统标题栏**：`WindowStyle="None"`，窗口外壳行为交给 `WindowChrome`
+  （`CaptionHeight="32"` → 顶部拖动区 + 双击最大化/还原 + 右键系统菜单；
+  `ResizeBorderThickness="6"` → 边缘缩放；已有 `GlassFrameThickness=0`、`UseAeroCaptionButtons=False`）。
+  自绘标题栏在 `MainWindow.xaml` 顶层 `Grid` 的 `Row 0`，窗口按钮（─ □ ✕）在其右端。
+  **标题栏区域内的按钮必须设 `shell:WindowChrome.IsHitTestVisibleInChrome="True"`**，
+  否则点击会被 WindowChrome 当成拖动窗口。
+- `MainWindow.xaml` 顶层 `Grid` 共 **6 行**：`0` 标题栏 / `1` 工具栏 / `2` 状态栏 /
+  `3` 弹性行 / `4` 实时日志 Expander / `5` 底部状态栏。机型文本（`MachineTypeText`）挂在标题栏右端。
+  主内容三栏用 `Grid.Row=2 RowSpan=3` + `Margin="0,28,0,23"` 覆盖式叠在状态栏与日志之上
+  （脆弱，改动布局时留意）。
 
 ## 架构约定（第三轮重构后）
 

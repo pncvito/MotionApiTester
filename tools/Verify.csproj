@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--  编译校验专用工程：只用来回答"src 下的代码现在还能不能编译通过"，
+        不产出正式产物（也不参与日常构建）。
+
+        为什么还需要它：正式构建必须走 MSBuild + src\MotionApiTester.csproj
+        （旧格式工程、Costura、WPF 的 Page/Resource 打包只有 MSBuild 处理得对）。
+        但 `dotnet build` 编不了旧格式工程（解析不到 PackageReference，报 CS0234 / CS0246）。
+        这个工程用 SDK 风格 + glob 把源码"借"过来编一遍，作为独立的编译通道。
+
+        两个关键点：
+          · 不用 <UseWPF>：它只对 .NET Core 3.0+ 生效，本工程目标是 net48，所以显式列 Reference。
+          · 必须把 src\obj 下 XAML 生成的 *.g.cs 也编进来：XAML 的 partial 类
+            （InitializeComponent / IComponentConnector 实现）在那里，少了它们
+            MainWindow.xaml.cs 之类会报"InitializeComponent 不存在"。
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Verify</AssemblyName>
+    <RootNamespace>MotionApiTester</RootNamespace>
+    <LangVersion>8.0</LangVersion>
+    <Deterministic>true</Deterministic>
+
+    <!-- 关掉 SDK 的隐式行为，避免和 src 里的 AssemblyInfo.cs / 生成的 g.cs 撞车 -->
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- src 下的全部源码（排除构建产物目录，含设备库所在的 src\Bin） -->
+    <Compile Include="..\src\**\*.cs"
+             Exclude="..\src\obj\**\*.cs;..\src\bin\**\*.cs;..\src\Bin\**\*.cs" />
+    <!-- XAML 生成的分部类 -->
+    <Compile Include="..\src\obj\**\*.g.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+  </ItemGroup>
+
+</Project>

@@ -13,6 +13,10 @@
 *.sln.docstates
 *.csproj.user
 
+# ===== AI 助手工作目录（记忆/会话数据，只留本机，不入库） =====
+.codebuddy/
+.workbuddy/
+
 # ===== 编译校验临时工程（见 CLAUDE.md） =====
 .verify/
 

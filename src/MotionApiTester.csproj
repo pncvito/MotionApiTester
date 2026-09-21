@@ -76,6 +76,7 @@
     <Compile Include="MainWindow.xaml.cs">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -98,10 +99,22 @@
     <Compile Include="Models\ApiProperty.cs" />
     <Compile Include="Models\NativeDllInfo.cs" />
     <Compile Include="ViewModels\MainViewModel.cs" />
+    <Compile Include="ViewModels\MainViewModel.Device.cs" />
+    <Compile Include="ViewModels\MainViewModel.Invocation.cs" />
+    <Compile Include="ViewModels\MainViewModel.Tree.cs" />
+    <Compile Include="ViewModels\MainViewModel.NativeDll.cs" />
+    <Compile Include="ViewModels\MainViewModel.Theme.cs" />
+    <Compile Include="ViewModels\MainViewModel.Log.cs" />
+    <Compile Include="ViewModels\TreeBuilder.cs" />
+    <Compile Include="ViewModels\RelayCommand.cs" />
     <Compile Include="ViewModels\Converters.cs" />
     <Compile Include="ViewModels\TreeNodeVm.cs" />
     <Compile Include="Services\NativeDllInspector.cs" />
     <Compile Include="Services\SettingsService.cs" />
+    <Compile Include="Services\DeviceDirectoryResolver.cs" />
+    <Compile Include="Services\DependencyResolver.cs" />
+    <Compile Include="Services\LogTextBuffer.cs" />
+    <Compile Include="Services\ThemeManager.cs" />
     <Compile Include="Views\SettingsWindow.xaml.cs">
       <DependentUpon>SettingsWindow.xaml</DependentUpon>
     </Compile>

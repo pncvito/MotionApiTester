@@ -18,6 +18,21 @@
 - 内置 `BooleanToVisibilityConverter` **忽略 ConverterParameter**，需要反向可见性时
   必须用自定义的 `InverseBoolToVisibilityConverter`。
 
+## 架构约定（第三轮重构后）
+
+- **`MainViewModel` 是 `partial`，按职责分 7 个文件**：核心 / `.Device` / `.Invocation` / `.Tree` /
+  `.NativeDll` / `.Theme` / `.Log`。新增成员按职责放对应文件，不要往核心文件堆。
+- **代码里不写死绝对路径**：设备目录走 `DeviceDirectoryResolver`，依赖解析路径走 `DependencyResolver`，
+  私有构建产物目录通过 `settings.json` 的 `ExtraDependencySearchPaths` 配。
+  （历史上 `MainViewModel._extraSearchPaths` 与 `AppSettings.DefaultDeviceDirectory` 各有硬编码，
+  第二轮自查因 shell 转义失效漏报过——**扫路径用 Grep 工具或 Python，别用 bash 转义**。）
+- **日志出口是 `LogTextBuffer`**：`ApiInvoker` 只往 sink 写，队列与保留行截断都在 buffer 里，
+  UI 侧 100ms 定时器 Flush 成 `LogText`。
+- **树构建是 `ViewModels/TreeBuilder.cs`**（放 ViewModels 而非 Services，因为它产出 `TreeNodeVm`，
+  避免 Services→ViewModels 的反向依赖）。
+- **改 XAML 绑定或增删源文件后跑 `python tools/verify-structure.py`**：编译管不到绑定失效与
+  csproj 漏登记（`AssemblyInfo.cs` 就漏了很久，导致程序集版本号与 `ThemeInfo` 一直缺失）。
+
 ## 编译校验通道（重要）
 
 本环境的 Bash/PowerShell 工具把 `MSBuild.exe` 判为 LOLBin 并拦截，**无法直接调用 MSBuild**。

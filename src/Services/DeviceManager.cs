@@ -14,7 +14,8 @@ namespace MotionApiTester.Services
         private readonly string _devicesFilePath;
 
         public ObservableCollection<DeviceProfile> Devices { get; } = new ObservableCollection<DeviceProfile>();
-        public DeviceProfile? ActiveDevice { get; private set; }
+        /// <summary>当前激活设备。无激活设备时为 null（项目未启用可空上下文，故不加 ? 注解）</summary>
+        public DeviceProfile ActiveDevice { get; private set; }
 
         public DeviceManager()
         {

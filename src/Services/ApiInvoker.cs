@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -19,8 +18,8 @@ namespace MotionApiTester.Services
     public class ApiInvoker
     {
         private readonly Dispatcher _dispatcher;
+        private readonly LogTextBuffer _log;
         private CancellationTokenSource _cts;
-        private readonly ConcurrentQueue<string> _logQueue = new ConcurrentQueue<string>();
 
         /// <summary>可用于解析接口实现的候选程序集(由加载流程登记,机型 DLL 放在最后)</summary>
         private readonly List<Assembly> _candidateAssemblies = new List<Assembly>();
@@ -31,18 +30,17 @@ namespace MotionApiTester.Services
         /// <summary>具体类型 → 实例 的缓存(重复调用复用同一实例,保留设备内部状态)</summary>
         private readonly Dictionary<Type, object> _instanceCache = new Dictionary<Type, object>();
 
-        /// <summary>日志回调（由 UI 层设置）</summary>
-        public Action<string> OnLog { get; set; }
-
         /// <summary>调用完成回调（参数：方法 + 结果 + 实例）</summary>
         public Action<ApiMethod, InvokeResult, object> OnCompleted { get; set; }
 
         /// <summary>状态变化回调（用于 UI 进度反馈）</summary>
         public Action<string> OnStatusChanged { get; set; }
 
-        public ApiInvoker(Dispatcher dispatcher)
+        /// <param name="log">日志出口，由 UI 层提供缓冲（见 LogTextBuffer）</param>
+        public ApiInvoker(Dispatcher dispatcher, LogTextBuffer log)
         {
             _dispatcher = dispatcher;
+            _log = log ?? new LogTextBuffer();
         }
 
         /// <summary>登记候选程序集(顺序有意义:越靠后越优先用于实现匹配)</summary>
@@ -213,14 +211,8 @@ namespace MotionApiTester.Services
             _cts?.Cancel();
         }
 
-        /// <summary>从队列取出待输出日志（在 UI 线程调用）</summary>
-        public bool TryDequeueLog(out string message) => _logQueue.TryDequeue(out message);
-
-        /// <summary>直接入队日志（线程安全）</summary>
-        private void EnqueueLog(string message)
-        {
-            _logQueue.Enqueue($"[{DateTime.Now:HH:mm:ss.fff}] {message}");
-        }
+        /// <summary>写日志（线程安全；缓冲与保留行数由 LogTextBuffer 负责）</summary>
+        private void EnqueueLog(string message) => _log.Write(message);
 
         /// <summary>把回调切回 UI 线程执行</summary>
         private void Post(Action action)

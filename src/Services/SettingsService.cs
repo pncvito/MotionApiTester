@@ -53,6 +53,13 @@ namespace MotionApiTester.Services
         public int InvokeTimeoutSeconds { get; set; } = 30;
         public string ExportFormat { get; set; } = "txt";
         public List<string> RecentDirectories { get; set; } = new List<string>();
-        public string DefaultDeviceDirectory { get; set; } = @"D:\MotionApiTester\Bin";
+        /// <summary>设备 DLL 目录。留空表示自动探测（见 DeviceDirectoryResolver）</summary>
+        public string DefaultDeviceDirectory { get; set; } = "";
+
+        /// <summary>
+        /// 额外的依赖搜索目录（交给 DependencyResolver）。
+        /// 用于设备 DLL 依赖散落在其它构建产物的场景，避免把路径写死在代码里。
+        /// </summary>
+        public List<string> ExtraDependencySearchPaths { get; set; } = new List<string>();
     }
 }

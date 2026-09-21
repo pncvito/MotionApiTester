@@ -8,7 +8,7 @@
 - **旧格式 .csproj**：源生成器不工作（属性手写）；新增 .cs 文件必须手工加进 `<Compile Include>`。
   但 `.verify/Verify.csproj` 用 glob 复用 `src/**/*.cs`，所以新增文件不影响编译校验。
 - **界面颜色一律走主题令牌**：不要硬编码颜色。两套主题键必须完全对称
-  （`Themes/LightTheme.xaml` / `DarkTheme.xaml`，当前各 30 个键）。
+  （`Themes/LightTheme.xaml` / `DarkTheme.xaml`，当前各 54 个键，必须对称）。
 - **`ApiMethod` 有两个反射入口**：方法用 `MethodInfo`，构造函数用 `ConstructorInfo`，
   统一走 `ApiMethod.Target`（`MethodBase`）。新增代码用 `Target`。
 - **`SelectedMethod` / `SelectedProperty` / `SelectedField` 的 setter 必须调用
@@ -24,9 +24,23 @@
   **标题栏区域内的按钮必须设 `shell:WindowChrome.IsHitTestVisibleInChrome="True"`**，
   否则点击会被 WindowChrome 当成拖动窗口。
 - `MainWindow.xaml` 顶层 `Grid` 共 **6 行**：`0` 标题栏 / `1` 工具栏 / `2` 状态栏 /
-  `3` 弹性行 / `4` 实时日志 Expander / `5` 底部状态栏。机型文本（`MachineTypeText`）挂在标题栏右端。
-  主内容三栏用 `Grid.Row=2 RowSpan=3` + `Margin="0,28,0,23"` 覆盖式叠在状态栏与日志之上
-  （脆弱，改动布局时留意）。
+  `3` 主内容三栏（弹性行）/ `4` 实时日志 Expander / `5` 底部状态栏。机型文本（`MachineTypeText`）挂在标题栏右端。
+  **各行独立占位，不要再回到负 Margin + RowSpan 的覆盖式叠压**：原先主内容那样压在状态栏与日志之上，
+  日志展开后被整块遮住（用户报「实时日志显示不全」），现已改掉。
+- **最大化不裁切**：`WindowStyle=None` + `WindowChrome` 组合下，WindowChrome 会把最大化尺寸算成
+  「工作区 + 边框补偿」，而客户区等于整个窗口 → 内容溢出屏幕、右侧与底部各被裁一个边框宽度。
+  现由 `MainWindow.OnSourceInitialized` 挂 `WM_GETMINMAXINFO` hook 接管：用 `MonitorFromWindow` +
+  `GetMonitorInfo` 的 `rcWork` 钉死最大化尺寸，并自行把 `ptMinTrackSize` 设为 `MinWidth/MinHeight`
+  （接管后 WindowChrome 不再负责这部分）；`StateChanged` 里把 `ResizeBorderThickness` 归零做双保险。
+  ⚠️ `ResizeBorderThickness` / `CaptionHeight` 是 WindowChrome 的**实例属性，没有静态 setter**
+  （与 `IsHitTestVisibleInChrome` 这个附加属性不同）。取实例用 `WindowChrome.GetWindowChrome(window)`。
+- **应用图标**：`src/app.ico`（16~256 共 7 个尺寸）。csproj 的 `<ApplicationIcon>` 只决定 exe 文件图标，
+  **必须另行登记 `<Resource Include="app.ico" />`**，`Window.Icon="app.ico"` 与标题栏
+  `<Image Source="app.ico"/>` 才能引用。漏登记会在启动时抛 `XamlParseException`。
+  验证办法：用 Python 搜 `src/obj/Debug/MotionApiTester.g.resources` 里有没有 `app.ico` 这个条目。
+- **实时日志面板**（`Row 4`）显示不全有两个成因，都已修：① 默认横向滚动条是 `Hidden`，
+  长日志行被直接截断 → 需 `HorizontalScrollBarVisibility="Auto"`；② `Text` 追加在末尾但 TextBox
+  不跟随滚动 → 在 `TextChanged` 里 `ScrollToEnd()`（仅当视口原本贴底，避免打断向上翻阅）。
 
 ## 架构约定（第三轮重构后）
 
@@ -61,6 +75,14 @@
   `{DynamicResource}` / `{StaticResource}` 引用的键是否都真实存在
   （缺键会在运行时抛 `XamlParseException`，历史上出现过一次）。
 - 输出中文日志乱码时，用 `Out-File -Encoding utf8` 写文件再读取。
+- ⚠️ **两个已踩过的坑**：
+  1. **与 VS 构建竞态**：本工程 glob `src/obj/Debug/*.g.cs`。用户正在 VS 里构建时，g.cs 恰被重写
+     → glob 读空 → 会报几十个「当前上下文中不存在名称 InitializeComponent」的**假错误**。
+     重跑一次即恢复 0 error，**不要据此改代码**。
+  2. **XAML 新增 `x:Name` 会让校验通道失效**：code-behind 引用新 `x:Name` 需要 g.cs 里有对应字段，
+     而 g.cs 只能由 VS 构建生成（本环境生不了 XAML）→ 在 VS 构建之前 `.verify` 必然编译失败。
+     **优先用 `sender` / `FindName` 拿控件，不要为了方便就加 `x:Name`**；
+     确需新增时，先让用户在 VS 构建一次再跑校验。
 
 ## 运行期排障位置
 

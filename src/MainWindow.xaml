@@ -6,6 +6,8 @@
         xmlns:models="clr-namespace:MotionApiTester.Models"
         Title="MotionApiTester · OptoFidelity API 测试工具"
         Height="780" Width="1320"
+        MinWidth="900" MinHeight="640"
+        Icon="app.ico"
         WindowStyle="None"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterScreen"
@@ -60,9 +62,9 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
         </Style>
         <Style x:Key="BtnSuccess" TargetType="Button" BasedOn="{StaticResource BtnBase}">
-            <Setter Property="Background" Value="#107C10"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#107C10"/>
+            <Setter Property="Background" Value="{DynamicResource SuccessFgBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource SuccessBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SuccessFgBrush}"/>
         </Style>
         <Style x:Key="BtnDanger" TargetType="Button" BasedOn="{StaticResource BtnBase}">
             <Setter Property="Background" Value="{DynamicResource PanelBrush}"/>
@@ -168,9 +170,9 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="12,0">
-                    <Border Background="{DynamicResource AccentBrush}" Width="20" Height="20" CornerRadius="4" VerticalAlignment="Center">
-                        <TextBlock Text="M" Foreground="White" FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
+                    <!-- 应用图标：与 exe / 任务栏同一份 app.ico -->
+                    <Image Source="app.ico" Width="20" Height="20" VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
                     <TextBlock Text="OptoFidelity API 测试工具" Margin="8,0,0,0" FontSize="12" Foreground="Gray" VerticalAlignment="Center"/>
                 </StackPanel>
 
@@ -296,8 +298,11 @@
             <TextBlock Text="{Binding StatusText}" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding StatusText}"/>
         </Border>
 
-        <!-- 主内容(三栏) -->
-        <Grid Grid.Row="2" Margin="0,28,0,23" Grid.ColumnSpan="2" Grid.RowSpan="3">
+        <!-- 主内容(三栏)：独占弹性行。
+             原先这一层用负 Margin + RowSpan 覆盖在状态栏与日志之上，
+             导致日志展开后被整块盖住。现改为各行独立占位：本层占弹性行，
+             日志独占下一行，展开时真实挤压本层高度 —— 不再互相遮挡。 -->
+        <Grid Grid.Row="3" Grid.ColumnSpan="2" MinHeight="180">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="280" MinWidth="200"/>
                 <ColumnDefinition Width="Auto"/>
@@ -728,16 +733,19 @@
         </Grid>
 
         <!-- 实时日志面板 -->
-        <Expander Grid.Row="4" Header="📋 实时日志" IsExpanded="False" MaxHeight="200" Grid.ColumnSpan="2" Margin="0,0,0,22" Grid.RowSpan="2">
+        <Expander Grid.Row="4" Header="📋 实时日志" IsExpanded="False" MaxHeight="260" Grid.ColumnSpan="2"
+                  Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,1">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <TextBox Grid.Row="0" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" VerticalScrollBarVisibility="Auto"
+                <TextBox Grid.Row="0" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         TextChanged="TbLog_TextChanged"
                          FontFamily="Consolas" FontSize="11"
                          Background="{DynamicResource LogBackgroundBrush}"
-                         Foreground="{DynamicResource LogForegroundBrush}" Height="140"/>
+                         Foreground="{DynamicResource LogForegroundBrush}" Height="180"/>
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="4,2">
                     <Button Style="{StaticResource BtnBase}" Command="{Binding ClearLogCommand}">
                         <TextBlock Text="🗑 清空 (Ctrl+L)"/>

@@ -143,6 +143,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 应用图标：ApplicationIcon 决定 exe 文件图标；这份 Resource 让它也能被
+         Window.Icon 与标题栏 Image 以 "app.ico" 相对路径引用 -->
+    <Resource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- TestLibrary 已删除 -->
   </ItemGroup>
 

@@ -153,18 +153,22 @@ def check_project_items():
         for m in re.finditer(r'<%s Include="([^"]+)"' % tag, proj):
             listed.add(m.group(1).replace('/', os.sep))
 
-    on_disk = set()
+    # on_disk      : 磁盘上的全部文件 —— 登记了就必须存在，含 .ico 等资源
+    # on_disk_build: 只有这些类型必须登记进 csproj（App.config / NuGet.config 等不必）
+    on_disk, on_disk_build = set(), set()
+    skip_dirs = (os.sep + 'obj' + os.sep, os.sep + 'bin' + os.sep, os.sep + '.vs' + os.sep)
     for path in glob.glob(os.path.join(SRC, '**', '*'), recursive=True):
-        if os.path.isdir(path) or os.sep + 'obj' + os.sep in path or os.sep + 'bin' + os.sep in path:
+        if os.path.isdir(path) or any(d in path for d in skip_dirs):
             continue
         rel = os.path.relpath(path, SRC)
+        on_disk.add(rel)
         if rel.endswith(('.cs', '.xaml')):
-            on_disk.add(rel)
+            on_disk_build.add(rel)
 
     problems = []
     for rel in sorted(listed - on_disk):
         problems.append('csproj 列了但磁盘不存在: %s' % rel)
-    for rel in sorted(on_disk - listed):
+    for rel in sorted(on_disk_build - listed):
         problems.append('磁盘存在但 csproj 未登记（不会参与编译）: %s' % rel)
     return problems
 

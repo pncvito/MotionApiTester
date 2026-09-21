@@ -1,9 +1,12 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Shell;
 using MotionApiTester.Models;
 using MotionApiTester.ViewModels;
 
@@ -11,13 +14,121 @@ namespace MotionApiTester
 {
     public partial class MainWindow : Window
     {
+        /// <summary>无系统标题栏时，提供边缘缩放能力的边框宽度(DIP，与 XAML 中 WindowChrome 一致)</summary>
+        private const double ResizeBorderSize = 6;
+
         public MainWindow()
         {
             InitializeComponent();
             DataContextChanged += (s, e) => HookViewModel();
+            StateChanged += MainWindow_StateChanged;
         }
 
         private MainViewModel Vm => DataContext as MainViewModel;
+
+        // ============== 窗口外壳(无系统标题栏的补偿处理) ==============
+        //
+        // WindowStyle="None" 之后，拖动区/边缘缩放/系统菜单由 WindowChrome 提供。
+        // 但 WindowChrome 在最大化时会把窗口尺寸算成「工作区 + 边框补偿」，
+        // 由于客户区等于整个窗口(GlassFrameThickness=0)，内容会溢出屏幕，
+        // 右侧与底部各被裁掉一个边框宽度 —— 这就是「最大化后界面显示不全」。
+        // 这里在消息层直接接管 WM_GETMINMAXINFO，把最大化尺寸钉死在工作区。
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            (PresentationSource.FromVisual(this) as HwndSource)?.AddHook(WndProc);
+        }
+
+        private const int WM_GETMINMAXINFO = 0x0024;
+        private const int MONITOR_DEFAULTTONEAREST = 2;
+
+        private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == WM_GETMINMAXINFO)
+            {
+                ApplyMaximizedBounds(hwnd, lParam);
+                // 完全接管：阻止 WindowChrome 再往上叠加边框补偿
+                handled = true;
+            }
+            return IntPtr.Zero;
+        }
+
+        private void ApplyMaximizedBounds(IntPtr hwnd, IntPtr lParam)
+        {
+            var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
+
+            var monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            if (monitor != IntPtr.Zero)
+            {
+                var info = new MONITORINFO { cbSize = Marshal.SizeOf(typeof(MONITORINFO)) };
+                if (GetMonitorInfo(monitor, ref info))
+                {
+                    // 用「工作区」而非「显示器区域」：最大化后不盖住任务栏
+                    mmi.ptMaxPosition.x = info.rcWork.left - info.rcMonitor.left;
+                    mmi.ptMaxPosition.y = info.rcWork.top - info.rcMonitor.top;
+                    mmi.ptMaxSize.x = info.rcWork.right - info.rcWork.left;
+                    mmi.ptMaxSize.y = info.rcWork.bottom - info.rcWork.top;
+                }
+            }
+
+            // 接管后需自行承担 WindowChrome 原本负责的最小尺寸限制
+            double scaleX = 1.0, scaleY = 1.0;
+            var target = PresentationSource.FromVisual(this)?.CompositionTarget;
+            if (target != null)
+            {
+                scaleX = target.TransformToDevice.M11;
+                scaleY = target.TransformToDevice.M22;
+            }
+            if (MinWidth > 0) mmi.ptMinTrackSize.x = (int)Math.Ceiling(MinWidth * scaleX);
+            if (MinHeight > 0) mmi.ptMinTrackSize.y = (int)Math.Ceiling(MinHeight * scaleY);
+
+            Marshal.StructureToPtr(mmi, lParam, true);
+        }
+
+        /// <summary>双保险：最大化时去掉 resize 边框(此时用不到边缘缩放)。
+        /// ResizeBorderThickness 是 WindowChrome 的实例属性(非附加属性，无静态 setter)，
+        /// 用 GetWindowChrome 取回 XAML 上配置的实例再改。</summary>
+        private void MainWindow_StateChanged(object sender, EventArgs e)
+        {
+            var chrome = WindowChrome.GetWindowChrome(this);
+            if (chrome == null) return;
+            chrome.ResizeBorderThickness = WindowState == WindowState.Maximized
+                ? new Thickness(0)
+                : new Thickness(ResizeBorderSize);
+        }
+
+        // ============== Win32 互操作 ==============
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int x; public int y; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT { public int left; public int top; public int right; public int bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MINMAXINFO
+        {
+            public POINT ptReserved;
+            public POINT ptMaxSize;
+            public POINT ptMaxPosition;
+            public POINT ptMinTrackSize;
+            public POINT ptMaxTrackSize;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public int dwFlags;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr MonitorFromWindow(IntPtr hwnd, int dwFlags);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
 
         private void HookViewModel()
         {
@@ -219,6 +330,21 @@ namespace MotionApiTester
             => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
+
+        /// <summary>
+        /// 实时日志：新行追加在末尾，TextBox 默认不跟随滚动 —— 表现为"日志显示不全"。
+        /// 仅当视口原本就贴底(或内容还没占满一屏)时自动滚到末尾，
+        /// 这样用户手动向上翻阅历史时不会被强行拉回。
+        /// </summary>
+        private void TbLog_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            var tb = sender as TextBox;
+            if (tb == null) return;
+
+            bool atBottom = tb.ExtentHeight <= tb.ViewportHeight + 1
+                            || tb.VerticalOffset >= tb.ExtentHeight - tb.ViewportHeight - 2;
+            if (atBottom) tb.ScrollToEnd();
+        }
 
         /// <summary>由 ViewModel.SearchFocusCommand 调用(Ctrl+F)</summary>
         public void FocusSearchBox()

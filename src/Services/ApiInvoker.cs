@@ -28,7 +28,10 @@ namespace MotionApiTester.Services
         /// <summary>契约类型 → 具体实现类型 的缓存</summary>
         private readonly Dictionary<Type, Type> _implementationCache = new Dictionary<Type, Type>();
 
-        /// <summary>具体类型 → 实例 的缓存(重复调用复用同一实例,保留设备内部状态)</summary>
+        /// <summary>
+        /// 类型 → 实例 的缓存（重复调用复用同一实例，保留设备内部状态）。
+        /// 键可能是"显式构造过的派生类型"，取用时按可赋值关系匹配，见 <see cref="FindReusable"/>。
+        /// </summary>
         private readonly Dictionary<Type, object> _instanceCache = new Dictionary<Type, object>();
 
         /// <summary>调用完成回调（参数：方法 + 结果 + 实例）</summary>
@@ -66,24 +69,32 @@ namespace MotionApiTester.Services
 
         /// <summary>
         /// 解析可调用实例。
-        /// 具体类型直接实例化;接口 / 抽象类则在候选程序集里找可无参构造的具体实现。
+        ///
+        /// <para>顺序：① 复用已建好、且能赋给 <paramref name="declaringType"/> 的实例；
+        /// ② 否则找该类型「派生得最深的可无参构造实现」并实例化（接口 / 抽象类 / 具体基类一视同仁）。</para>
         /// </summary>
         public object ResolveInstance(Type declaringType)
         {
             if (declaringType == null) return null;
 
-            if (CanInstantiate(declaringType))
-                return GetOrCreateInstance(declaringType);
+            // ① 已有实例优先 —— 设备侧只有一个对象，详见 FindReusable
+            var reusable = FindReusable(declaringType);
+            if (reusable != null) return reusable;
 
+            // ② 找最深的可构造实现。
+            //    ⚠️ 不能写成"具体类型直接 Activator.CreateInstance(declaringType)"：
+            //    设备的方法按声明类型分散在继承链上，各建各的实例会让初始化作用不到动作方法上。
             var impl = FindImplementation(declaringType);
             if (impl == null)
             {
                 throw new InvalidOperationException(
-                    $"{declaringType.FullName} 是{(declaringType.IsInterface ? "接口" : "抽象类")}，且未在已加载的 DLL 中找到可无参构造的具体实现。" +
-                    "请确认机型 DLL 已正确加载，或改用静态方法调用。");
+                    $"{declaringType.FullName} 是{(declaringType.IsInterface ? "接口" : declaringType.IsAbstract ? "抽象类" : "类型")}，"
+                    + "且未在已加载的 DLL 中找到可无参构造的具体实现。"
+                    + "请确认机型 DLL 已正确加载，或改用静态方法调用。");
             }
 
-            EnqueueLog($"✓ 解析实现 {declaringType.Name} → {impl.FullName}");
+            if (impl != declaringType)
+                EnqueueLog($"✓ 解析实现 {declaringType.Name} → {impl.FullName}");
             return GetOrCreateInstance(impl);
         }
 
@@ -114,6 +125,15 @@ namespace MotionApiTester.Services
                     var created = await Task.Run(() => method.ConstructorInfo.Invoke(parameters), token);
                     sw.Stop();
 
+                    // 把构造出来的实例登记成该类型的当前实例：用户点"构造函数"要的就是这个对象，
+                    // 之后的实例方法调用必须落在同一个对象上 —— 否则带参数的构造等于白点
+                    // （静态构造函数 #cctor 返回 null，天然被挡在外面）。
+                    if (created != null)
+                    {
+                        _instanceCache[created.GetType()] = created;
+                        EnqueueLog($"✓ 已登记为 {created.GetType().FullName} 的当前实例，后续调用将复用它");
+                    }
+
                     var ctorResult = new InvokeResult
                     {
                         Success = true,
@@ -137,6 +157,34 @@ namespace MotionApiTester.Services
                 // 4. 实际反射调用
                 var rawResult = await Task.Run(() => target.Invoke(instance, parameters), token);
                 sw.Stop();
+
+                // 5. 设备侧"自报失败"：OptoFidelity 的 API 普遍把失败包在返回值里
+                //    （典型签名 (bool ok, string message)），内部 catch 掉异常后
+                //    return (false, ex.Message)，并不向调用方抛出。
+                //    ⚠️ 只看异常的话这里会打出"✅ 调用成功" + 绿色结果卡片，用户会以为万事大吉 ——
+                //    这比直接报错更误导：排障注意力会被引到依赖、参数这些无关方向去。
+                string apiError;
+                if (TryReadApiFailure(rawResult, out apiError))
+                {
+                    var failMsg = string.IsNullOrWhiteSpace(apiError) ? "(API 未给出错误信息)" : apiError;
+                    var hint = BuildApiFailureHint(failMsg);
+
+                    EnqueueLog($"❌ 调用未抛异常，但 API 自报失败 ({sw.ElapsedMilliseconds}ms)");
+                    EnqueueLog($"   返回值: {FormatResult(rawResult)}");
+                    EnqueueLog("   ⚠️ 这是设备侧方法体的执行结果（内部把异常转成了返回值），不是依赖缺失。");
+                    if (hint != null) EnqueueLog($"   ⚠️ {hint}");
+
+                    var failedResult = new InvokeResult
+                    {
+                        Success = false,
+                        ElapsedMs = sw.ElapsedMilliseconds,
+                        ReturnValue = rawResult,
+                        Message = $"API 返回失败: {failMsg}"
+                    };
+                    Post(() => OnCompleted?.Invoke(method, failedResult, instance));
+                    OnStatusChanged?.Invoke($"❌ {method.Name} → API 返回失败: {failMsg}");
+                    return failedResult;
+                }
 
                 var invokeResult = new InvokeResult
                 {
@@ -390,10 +438,58 @@ namespace MotionApiTester.Services
 
         // ============== 实例解析 ==============
 
-        private static bool CanInstantiate(Type type) =>
-            type.IsClass && !type.IsAbstract && type.GetConstructor(Type.EmptyTypes) != null;
+        /// <summary>
+        /// 在已建好的实例里找「能赋给 <paramref name="declaringType"/> 的那个对象」（即派生类实例）。
+        ///
+        /// <para><b>为什么必须这么做</b>：设备侧真正工作的只有一个对象，但它的成员按声明类型
+        /// 分散在继承链上 —— 例如 <c>BaseInterface.InitializeFixture(Action&lt;string&gt;, string)</c>（初始化）
+        /// 与 <c>EolSeriesBaseInterface.FixtureMoveToLoadUnloadingPosition(Action&lt;string&gt;)</c>（动作）。
+        /// 若按"成员的声明类型"各建各的实例，初始化就永远作用不到动作上，
+        /// 表现为动作方法一路 NullReferenceException —— 而日志里两个实例都显示"创建成功"，
+        /// 光看日志根本发现不了。仓库里 <c>ReflectionEnumerator</c> 用的是
+        /// <c>DeclaredOnly</c>，成员只会挂在声明它的那个类型节点下，所以这种错位一定会发生。</para>
+        /// </summary>
+        private object FindReusable(Type declaringType)
+        {
+            if (_instanceCache.TryGetValue(declaringType, out var exact) && exact != null)
+                return exact;
 
-        /// <summary>在候选程序集中查找契约类型的具体实现（优先机型 DLL，其次名字最短的主实现）</summary>
+            // 有多个派生实例时取派生最深的（最接近设备真正使用的那个类型）
+            object best = null;
+            int bestDepth = -1;
+            foreach (var entry in _instanceCache)
+            {
+                var value = entry.Value;
+                if (value == null) continue;
+
+                var type = value.GetType();
+                if (!declaringType.IsAssignableFrom(type)) continue;
+
+                var depth = DerivationDepth(type);
+                if (depth <= bestDepth) continue;
+
+                best = value;
+                bestDepth = depth;
+            }
+
+            return best;
+        }
+
+        /// <summary>继承链深度（<see cref="object"/> 记 0，越靠近叶子越大）</summary>
+        private static int DerivationDepth(Type type)
+        {
+            int depth = 0;
+            for (var t = type; t != null && t != typeof(object); t = t.BaseType) depth++;
+            return depth;
+        }
+
+        /// <summary>
+        /// 在候选程序集中查找 <paramref name="contract"/> 的具体实现。
+        ///
+        /// <para>优先「派生得最深」的那个 —— 设备只认一个对象：基类上的 InitializeFixture
+        /// 必须落到派生类的动作方法上，选基类本身等于白初始化。同深度时沿用原优先级
+        /// （程序集登记顺序 → 类名最短）。</para>
+        /// </summary>
         private Type FindImplementation(Type contract)
         {
             if (_implementationCache.TryGetValue(contract, out var cached)) return cached;
@@ -425,7 +521,8 @@ namespace MotionApiTester.Services
             }
 
             var impl = candidates
-                .OrderByDescending(t => _candidateAssemblies.IndexOf(t.Assembly))
+                .OrderByDescending(DerivationDepth)                              // 越靠近叶子越优先：设备真正在用的就是那个对象
+                .ThenByDescending(t => _candidateAssemblies.IndexOf(t.Assembly)) // 同深度再按原来的程序集优先级
                 .ThenBy(t => t.Name.Length)
                 .FirstOrDefault();
 
@@ -459,6 +556,69 @@ namespace MotionApiTester.Services
             return created;
         }
 
+        /// <summary>
+        /// 识别「设备 API 自报失败」的返回值约定：元组首项为 bool 且为 false。
+        ///
+        /// <para>不写死 <c>(bool, string)</c> 这一种形态，而是按 <c>Item1/Item2</c> 反射取值 ——
+        /// 这样 <c>ValueTuple&lt;bool,string&gt;</c> / <c>Tuple&lt;bool,string&gt;</c> 以及更长元组都能认，
+        /// 也不会因为设备侧换了 TFM 就编不过。</para>
+        /// </summary>
+        private static bool TryReadApiFailure(object result, out string message)
+        {
+            message = null;
+            if (result == null) return false;
+
+            var type = result.GetType();
+            if (!type.IsGenericType) return false;
+
+            var fullName = type.FullName ?? "";
+            if (!fullName.StartsWith("System.ValueTuple`", StringComparison.Ordinal)
+                && !fullName.StartsWith("System.Tuple`", StringComparison.Ordinal))
+                return false;
+
+            object first;
+            try
+            {
+                // ValueTuple 是公共字段，Tuple 是属性 —— 两条都试，避免判型
+                first = type.GetField("Item1")?.GetValue(result)
+                        ?? type.GetProperty("Item1")?.GetValue(result);
+            }
+            catch { return false; }
+
+            if (!(first is bool ok) || ok) return false;
+
+            try
+            {
+                var second = type.GetField("Item2")?.GetValue(result)
+                             ?? type.GetProperty("Item2")?.GetValue(result);
+                message = second?.ToString();
+            }
+            catch { message = null; }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 设备 API 自报失败时补一句最可能的成因。
+        ///
+        /// <para>目前只认 NullReferenceException 这一种 —— 它在这类 API 里几乎总是
+        /// 「实例没被初始化」（无参构造出来的对象，内部夹具 / 硬件 / 日志字段还是 null），
+        /// 而不是缺 DLL：真缺 DLL 会在进入方法体之前就抛 FileNotFoundException，
+        /// 根本轮不到方法体里的 catch。</para>
+        /// </summary>
+        private static string BuildApiFailureHint(string message)
+        {
+            if (string.IsNullOrEmpty(message)) return null;
+
+            var isNre = message.IndexOf("未将对象引用设置到对象的实例", StringComparison.Ordinal) >= 0
+                     || message.IndexOf("Object reference not set to an instance", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!isNre) return null;
+
+            return "NullReferenceException 是设备 API 内部抛出并自行捕获的。最常见原因是实例未初始化 ——"
+                 + "本工具用无参构造创建实例，不会执行设备侧的初始化流程（从 DI 容器取实例 / Init / Open / Connect 之类）。"
+                 + "请先调用该类型的初始化方法再重试；这与「依赖缺失」无关。";
+        }
+
         /// <summary>格式化返回值</summary>
         private static string FormatResult(object result)
         {
@@ -476,6 +636,11 @@ namespace MotionApiTester.Services
 
     public class InvokeResult
     {
+        /// <summary>
+        /// 调用成功 = 反射调用未抛异常 **且** 设备 API 未在返回值里自报失败
+        /// （见 <c>ApiInvoker.TryReadApiFailure</c>）。只看异常会把
+        /// <c>(false, ex.Message)</c> 这类失败误报成成功。
+        /// </summary>
         public bool Success { get; set; }
         public long ElapsedMs { get; set; }
         public string Message { get; set; } = "";

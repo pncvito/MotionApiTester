@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 namespace MotionApiTester.Services
 {
@@ -37,12 +38,25 @@ namespace MotionApiTester.Services
         private readonly HashSet<string> _reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private readonly object _reportGate = new object();
 
+        /// <summary>未命中但尚未裁决的依赖（简名 → 报告文本），等 <see cref="FlushPendingMisses"/> 定夺</summary>
+        private readonly Dictionary<string, string> _pendingMisses =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>延迟裁决未命中的定时器（只在真的出现未命中时才排期）</summary>
+        private readonly Timer _missTimer;
+
+        /// <summary>延迟多久裁决：AssemblyResolve 链是同步跑完的，几百毫秒足够让"最终有没有解析成功"稳定下来</summary>
+        private const int MissFlushDelayMs = 400;
+
         /// <summary>CLR 运行时目录（mscorlib / System.* 等所在）与其 WPF 子目录</summary>
         private static readonly string RuntimeDir = RuntimeEnvironment.GetRuntimeDirectory();
         private static readonly string WpfDir = Path.Combine(RuntimeDir, "WPF");
 
         public DependencyResolver()
         {
+            // 未命中的报告一律延迟裁决，见 FlushPendingMisses；先建好、不排期（Timeout.Infinite）
+            _missTimer = new Timer(_ => FlushPendingMisses(), null, Timeout.Infinite, Timeout.Infinite);
+
             // 本程序自身输出目录：CLR 默认探测路径里有它，体检时必须一并认账，
             // 否则会把"其实能解析到"的共享依赖误报成缺失
             AddSearchPath(AppDomain.CurrentDomain.BaseDirectory);
@@ -111,7 +125,11 @@ namespace MotionApiTester.Services
         {
             _byteCache.Clear();
             _embeddedProviders.Clear();
-            lock (_reportGate) _reported.Clear();
+            lock (_reportGate)
+            {
+                _reported.Clear();
+                _pendingMisses.Clear();
+            }
         }
 
         /// <summary>
@@ -142,8 +160,10 @@ namespace MotionApiTester.Services
                     return Assembly.LoadFrom(path);
                 }
 
-                // 3. 解析不到 —— 把"搜过哪些目录"打出来，否则只看到 CLR 的方言报错
-                ReportOnce($"MISS:{simpleName}", BuildMissReport(simpleName));
+                // 3. 解析不到 —— ⚠️ 这里**不能**立刻喊"依赖缺失"：AssemblyResolve 是多播事件，
+                //    本处理器返回 null 只代表"我这条路没找到"，Costura 内嵌资源那个处理器还在后面。
+                //    先挂起，稍后按"最终有没有加载进进程"裁决，见 QueueMiss / FlushPendingMisses。
+                QueueMiss(simpleName);
             }
             catch (Exception ex)
             {
@@ -381,6 +401,55 @@ namespace MotionApiTester.Services
             foreach (var dir in paths)
                 sb.Append($"\n      · {dir}{(Directory.Exists(dir) ? "" : "    (目录不存在)")}");
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 记下一次未命中，并把裁决排到 <see cref="MissFlushDelayMs"/> 之后。
+        /// 报告文本一并先算好 —— 搜索路径在裁决前可能已被 <see cref="SetDeviceDirectory"/> 改动，
+        /// 那时再算就与"当时搜过哪些目录"对不上了。
+        /// </summary>
+        private void QueueMiss(string simpleName)
+        {
+            lock (_reportGate)
+            {
+                if (_reported.Contains($"MISS:{simpleName}")) return;
+                _pendingMisses[simpleName] = BuildMissReport(simpleName);
+            }
+
+            try { _missTimer.Change(MissFlushDelayMs, Timeout.Infinite); }
+            catch (ObjectDisposedException) { /* 已释放（退出中），忽略 */ }
+        }
+
+        /// <summary>
+        /// 裁决挂起的未命中。
+        ///
+        /// <para><b>为什么必须延迟</b>：CLR 会把 <c>AssemblyResolve</c> 依次交给所有订阅者，
+        /// 我们的处理器只负责其中一段。直接在这里报"✗ 依赖缺失 Prism.DryIoc.Wpf.dll"
+        /// 会与随后那句「依赖体检: 11 个引用全部可解析 —— 内嵌资源 7」正面矛盾 ——
+        /// 实测日志里这两条就相隔 120ms（21:23:50.558 / 50.679），用户看到只会以为工具在乱报。</para>
+        ///
+        /// <para>裁决判据用「最终是否真的加载进了进程」，而不是"谁解析的"：
+        /// 无论是 Costura 内嵌资源、还是 CLR 默认探测，只要进了进程就说明不缺。
+        /// 真缺的那些，体检（<see cref="AuditDependencies"/>）也会照实报出来。</para>
+        /// </summary>
+        private void FlushPendingMisses()
+        {
+            KeyValuePair<string, string>[] batch;
+            lock (_reportGate)
+            {
+                if (_pendingMisses.Count == 0) return;
+                batch = _pendingMisses.ToArray();
+                _pendingMisses.Clear();
+            }
+
+            foreach (var pending in batch)
+            {
+                if (IsLoadedInProcess(pending.Key))
+                    ReportOnce($"LATE:{pending.Key}",
+                        $"✓ 依赖 {pending.Key} —— 本解析器未命中，已由其他解析途径（Costura 内嵌资源）供出");
+                else
+                    ReportOnce($"MISS:{pending.Key}", pending.Value);
+            }
         }
 
         private void ReportOnce(string key, string message)

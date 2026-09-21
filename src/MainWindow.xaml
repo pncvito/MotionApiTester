@@ -96,35 +96,13 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 标题栏 -->
-        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Grid.ColumnSpan="2">
-            <Grid Height="32">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="12,0">
-                    <Border Background="{DynamicResource AccentBrush}" Width="20" Height="20" CornerRadius="4" VerticalAlignment="Center">
-                        <TextBlock Text="M" Foreground="White" FontWeight="Bold" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <TextBlock Text="OptoFidelity API 测试工具" Margin="8,0,0,0" FontSize="12" Foreground="Gray" VerticalAlignment="Center"/>
-                </StackPanel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0">
-                    <TextBlock Text="{Binding MachineTypeText, StringFormat='机型: {0}'}" FontSize="11" Foreground="Gray"
-                               VerticalAlignment="Center" ToolTip="来自 D:\MotionConfig\ConfigHardware\MachineType.json"/>
-                </StackPanel>
-            </Grid>
-        </Border>
-
         <!-- 工具栏 -->
-        <Border Grid.Row="1" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Grid.ColumnSpan="2">
+        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Grid.ColumnSpan="2">
             <Grid Height="44" Margin="12,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -199,12 +177,31 @@
         </Border>
 
         <!-- 状态栏(顶部,短暂状态) -->
-        <Border Grid.Row="2" Background="{DynamicResource StatusBarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,6" Grid.ColumnSpan="2">
-            <TextBlock Text="{Binding StatusText}" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding StatusText}"/>
+        <Border Grid.Row="1" Background="{DynamicResource StatusBarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,6" Grid.ColumnSpan="2">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding StatusText}" FontSize="12" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" ToolTip="{Binding StatusText}"/>
+                <TextBlock Grid.Column="1" Margin="12,0,0,0" FontSize="11" Foreground="Gray" VerticalAlignment="Center"
+                           Text="{Binding MachineTypeText, StringFormat='机型: {0}'}"
+                           ToolTip="来自 ConfigHardware\MachineType.json">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding MachineTypeText}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
         </Border>
 
         <!-- 主内容(三栏) -->
-        <Grid Grid.Row="2" Margin="0,28,0,23" Grid.ColumnSpan="2" Grid.RowSpan="3">
+        <Grid Grid.Row="1" Margin="0,28,0,23" Grid.ColumnSpan="2" Grid.RowSpan="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="280" MinWidth="200"/>
                 <ColumnDefinition Width="Auto"/>
@@ -635,7 +632,7 @@
         </Grid>
 
         <!-- 实时日志面板 -->
-        <Expander Grid.Row="4" Header="📋 实时日志" IsExpanded="False" MaxHeight="200" Grid.ColumnSpan="2" Margin="0,0,0,22" Grid.RowSpan="2">
+        <Expander Grid.Row="3" Header="📋 实时日志" IsExpanded="False" MaxHeight="200" Grid.ColumnSpan="2" Margin="0,0,0,22" Grid.RowSpan="2">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
@@ -657,7 +654,7 @@
         </Expander>
 
         <!-- 底部状态栏(分段) -->
-        <Border Grid.Row="5" Background="{DynamicResource BottomBarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,3" Grid.ColumnSpan="2">
+        <Border Grid.Row="4" Background="{DynamicResource BottomBarBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,3" Grid.ColumnSpan="2">
             <StackPanel Orientation="Horizontal">
                 <Ellipse Width="6" Height="6" Fill="{DynamicResource SuccessFgBrush}" VerticalAlignment="Center"/>
                 <TextBlock Text="就绪" Margin="6,0,0,0" FontSize="11" Foreground="Gray"/>

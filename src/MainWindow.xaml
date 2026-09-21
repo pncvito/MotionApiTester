@@ -27,6 +27,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <vm:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <vm:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <vm:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
 
         <!-- 按钮样式:4 种 -->
         <Style x:Key="BtnBase" TargetType="Button">
@@ -279,7 +280,7 @@
                             <TextBlock Text="STATIC" Style="{StaticResource TagBadge}" Background="{DynamicResource WarnBgBrush}" Foreground="{DynamicResource WarnFgBrush}"
                                        Visibility="{Binding SelectedMethod.IsStatic, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}"/>
                             <TextBlock Text="INSTANCE" Style="{StaticResource TagBadge}" Background="{DynamicResource InfoBgBrush}" Foreground="{DynamicResource InfoFgBrush}"
-                                       Visibility="{Binding SelectedMethod.IsStatic, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverted, FallbackValue=Collapsed}"/>
+                                       Visibility="{Binding SelectedMethod.IsStatic, Converter={StaticResource InverseBoolToVisibilityConverter}, FallbackValue=Collapsed}"/>
                             <TextBlock Text="📋 LOGGER" Style="{StaticResource TagBadge}" Background="{DynamicResource DangerBgBrush}" Foreground="{DynamicResource DangerFgBrush}"
                                        Visibility="{Binding SelectedMethod.HasLoggerParameter, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}"/>
                             <TextBlock Text="ASYNC" Style="{StaticResource TagBadge}" Background="{DynamicResource PurpleBgBrush}" Foreground="{DynamicResource PurpleFgBrush}"
@@ -357,7 +358,7 @@
                                                     </Grid>
                                                     <CheckBox Grid.Column="2" Margin="4,0,0,0" ToolTip="勾选后强制传 null(忽略输入值)"
                                                               IsChecked="{Binding PassNull, Mode=TwoWay}"
-                                                              Visibility="{Binding IsLogger, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverted}"
+                                                              Visibility="{Binding IsLogger, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                                               VerticalAlignment="Center" HorizontalAlignment="Center"/>
                                                 </Grid>
                                             </DataTemplate>
@@ -557,7 +558,7 @@
                                                 <TextBlock Text="✓ OK" Foreground="{DynamicResource SuccessFgBrush}" FontSize="10" FontWeight="SemiBold"/>
                                             </Border>
                                             <Border Background="{DynamicResource DangerBgBrush}" Padding="6,1" CornerRadius="8"
-                                                    Visibility="{Binding Success, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Inverted}">
+                                                    Visibility="{Binding Success, Converter={StaticResource InverseBoolToVisibilityConverter}}">
                                                 <TextBlock Text="✗ ERR" Foreground="{DynamicResource DangerFgBrush}" FontSize="10" FontWeight="SemiBold"/>
                                             </Border>
                                             <TextBlock Text="{Binding Result}" Foreground="Gray" FontSize="11" Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
@@ -598,7 +599,7 @@
                                 </ListBox>
                                 <TextBlock Grid.Row="0" Text="未发现原生 DLL" Foreground="Gray" FontSize="12"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           Visibility="{Binding HasNativeDlls, Converter={StaticResource InverseBoolConverter}}"/>
+                                           Visibility="{Binding HasNativeDlls, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
                                 <Grid Grid.Row="1" Margin="8,6">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>

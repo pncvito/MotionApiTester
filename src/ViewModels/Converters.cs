@@ -59,6 +59,19 @@ namespace MotionApiTester.ViewModels
             => value is bool b ? !b : value;
     }
 
+    /// <summary>反向布尔 → Visibility（false = Visible, true = Collapsed）</summary>
+    public class InverseBoolToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            bool flag = value is bool b && b;
+            return flag ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
+
     /// <summary>Null → bool 转换器（null=false, not-null=true）</summary>
     public class NullToBoolConverter : IValueConverter
     {

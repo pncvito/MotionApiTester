@@ -297,9 +297,17 @@ namespace MotionApiTester.ViewModels
                 return;
             }
 
-            // 把本次加载的程序集交给调用器，用于解析接口 / 抽象类型的具体实现
+            // 把本次加载的程序集交给调用器，用于解析接口 / 抽象类型的具体实现。
+            //
+            // ⚠️ 这里必须**倒序**传：SetCandidateAssemblies 的约定是"越靠后优先级越高"，
+            //    而加载顺序被上面的硬约束逼成「机型 DLL 先、BaseTester 后」，两者正好相反。
+            //    不反转的后果实测过（MDA 机型）：
+            //      IBaseInterface 被解析成 BaseTester 里的 WucBaseWithTempLoopInterface
+            //      —— 它与机型 DLL 的 MDA_BinocKitefinWapper 处在同一继承深度，比的是程序集优先级 ——
+            //      于是 InitializeFixture 作用在 WUC 基类实例上，而机型的 MDA wrapper 是
+            //      另一个刚 new 出来、从未初始化的对象 → 动作方法一路 NullReferenceException。
             _invoker.ClearInstances();
-            _invoker.SetCandidateAssemblies(_loadedAssemblies);
+            _invoker.SetCandidateAssemblies(Enumerable.Reverse(_loadedAssemblies));
 
             // ⑥ 状态栏统计
             int typeCount = Assemblies.Sum(a => a.Types.Count);

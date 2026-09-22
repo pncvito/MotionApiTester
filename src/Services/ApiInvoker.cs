@@ -755,11 +755,28 @@ namespace MotionApiTester.Services
                 }
             }
 
-            var impl = candidates
-                .OrderByDescending(DerivationDepth)                              // 越靠近叶子越优先：设备真正在用的就是那个对象
-                .ThenByDescending(t => _candidateAssemblies.IndexOf(t.Assembly)) // 同深度再按原来的程序集优先级
+            // 排序：① 程序集优先级（**机型 DLL 优先**，见 SetCandidateAssemblies 的顺序约定）
+            //       ② 同一程序集内取派生最深的 —— 设备真正在用的那个对象
+            //       ③ 仍并列时取类名最短的
+            //
+            // ⚠️ ① 必须排在 ② 前面。BaseTester 里放着一批"通用"实现：
+            //    WucBaseWithTempLoopInterface / EolSeriesBaseWithTempLoopInterface / WucBaseInterface …，
+            //    它们**比机型自己的 wrapper 派生得更深**。若让"派生最深"做首选键，
+            //    IBaseInterface 会被解析成 WucBaseWithTempLoopInterface，而机型 DLL 的
+            //    MDA_BinocKitefinWapper 是另一个对象 → 初始化与动作落在两个对象上，动作一路 NRE（实测）。
+            var ordered = candidates
+                .OrderByDescending(t => _candidateAssemblies.IndexOf(t.Assembly))
+                .ThenByDescending(DerivationDepth)
                 .ThenBy(t => t.Name.Length)
-                .FirstOrDefault();
+                .ToList();
+
+            var impl = ordered.FirstOrDefault();
+
+            // 多个候选时把"都有谁、选中了哪个"写进日志：这类选择错了不会报任何错，
+            // 只会让初始化与动作落在两个不同对象上（MDA 机型的 IBaseInterface 就是这么踩的）。
+            if (ordered.Count > 1)
+                EnqueueLog($"  · {contract.Name} 有 {ordered.Count} 个可构造实现，按「机型 DLL 优先 → 派生最深」选中第 1 个："
+                         + string.Join("、", ordered.Take(4).Select(t => t.Name + "@" + t.Assembly.GetName().Name)));
 
             if (impl != null) _implementationCache[contract] = impl;
             return impl;

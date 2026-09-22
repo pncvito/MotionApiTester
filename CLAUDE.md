@@ -38,8 +38,11 @@ OptoFidelity 内部用 Prism.DryIoc，工具只用构造函数注入。
 （别再写 `#E0E0E0`），提示框用 `WarnBg/WarnFg`。树节点图标颜色也不在 `TreeBuilder` 里写死，
 而是由 `MainWindow.xaml` 的节点模板按 `NodeKind` / `Badge` 用 DataTrigger 映射到令牌。
 
-**输入类控件（TextBox / ListBox …）必须在 `App.xaml` 里显式给颜色**（已有隐含样式）：WPF 默认模板用的是
-系统色，不跟本应用的主题走 —— 不写就会出现"深色主题里冒出白色输入框"。
+**输入类控件（TextBox / ListBox / CheckBox / RadioButton / GroupBox …）必须在 `App.xaml` 里显式给颜色**（已有隐含样式）：WPF 默认模板用的是
+系统色，不跟本应用的主题走 —— 不写就会出现"深色主题里冒出白色输入框"或"深色底 + 黑字看不见"。
+`CheckBox` / `RadioButton` 尤其容易漏（它们的 `Foreground` 默认取系统色），
+受害点是设置窗口的主题三选一 / 导出格式二选一、以及主窗口参数区的「传 null」——
+只覆盖 `Foreground` 即可，勾选框本身的标记由系统模板绘制，换它要整个 `ControlTemplate`。
 **`ComboBox` 除外且不要使用**：它的默认模板无视 `Background`（要换整个 `ControlTemplate` 才跟得上主题），
 所以本应用已把它清掉 —— 导出格式改用单选按钮、设备向导的机型 DLL 改用 ListBox。
 
@@ -169,7 +172,6 @@ D:\MotionApiTester\
 | `DeviceDirectoryResolver` | 解析设备 DLL 目录：`DefaultDeviceDirectory` 优先，否则按 exe 相对位置探测（`<exe>\Bin` → 上三级 `Bin` → 上一级 `Bin`） |
 | `MachineTypeReader` | 读 `D:\MotionConfig\ConfigHardware\MachineType.json` |
 | `MachineTypeMatcher` | Jaccard 相似度匹配机型字符串与 `OptoFidelity.{Model}.dll` |
-| `AssemblyLoader` | 单程序集加载 + Costura 检测（**当前未被使用**，MainViewModel 走自己的 byte[] 加载路径） |
 | `ReflectionEnumerator` | 容错枚举类型 / 方法 / **构造函数** / 属性 / 字段 |
 | `ApiInvoker` | 实例解析 + 参数装配 + logger 注入 + 反射调用；日志写进 `LogTextBuffer` |
 | `DependencyResolver` | `AssemblyResolve` 的实际逻辑：字节缓存 → 搜索路径（**代码里不写死绝对路径**） |
@@ -178,7 +180,6 @@ D:\MotionApiTester\
 | `NativeDllInspector` | PE 解析：架构识别 + **导出表枚举**（名字/序号/转发/调用约定）+ 逐函数 P/Invoke 模板；**只读文件，绝不 LoadLibrary** |
 | `ParameterMemory` | 方法参数值记忆（`param-values.json`，按方法签名索引；成功调用后写入） |
 | `DeviceManager` / `HistoryService` / `SettingsService` | 持久化到 `%APPDATA%\MotionApiTester\` |
-| `LogService` | 当前未被使用 |
 
 ### 调用链路
 1. `MainViewModel.LoadDeviceFromDirectory()`

@@ -234,9 +234,10 @@ $msbuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Curren
 
 **技术债**
 
-- `Services/AssemblyLoader.cs` 与 `Services/LogService.cs` **当前没有任何引用点**（实测全仓库只有自身的类声明；实际的加载与日志分别走 `MainViewModel.LoadDeviceFromDirectory` 与 `LogTextBuffer`）。留着的价值是"加载顺序"那份注释，考虑合并或删除。
+- ~~`Services/AssemblyLoader.cs` 与 `Services/LogService.cs` **当前没有任何引用点**~~ —— **已删除**。两者全仓库只有自身的类声明（实测）：实际的加载走 `MainViewModel.LoadDeviceFromDirectory`（byte[] + 显式激活 Costura + 登记实例），日志走 `LogTextBuffer`。删除前先把 `AssemblyLoader` 里"加载顺序不可颠倒"那份注释迁移到了 `MainViewModel.Device.cs` 的对应加载段（那里才是真正生效的地方），避免丢掉这段踩坑记录。
 - `MainWindow.xaml` 里底部状态栏的状态点与「就绪」文字、以及「上次耗时」的颜色是**写死的**（`:855-857`、`:875`），调用失败时仍显示绿色 —— 属"状态在说谎"，应绑定 `IsInvoking` / 上次结果。
-- 深色主题只覆盖了**自绘的部分**：默认模板的 `Button`（hover `#BEE6FD` / pressed `#C4E5F6` / disabled `#F4F4F4`）、`CheckBox`/`RadioButton`、`ScrollBar`、`TabItem`、`Expander` 仍吃系统浅色调色板；两个对话框也仍是系统标题栏。要一致需自绘 ControlTemplate / `DwmSetWindowAttribute`。
+- 深色主题只覆盖了**自绘的部分**：默认模板的 `Button`（hover `#BEE6FD` / pressed `#C4E5F6` / disabled `#F4F4F4`）、`ScrollBar`、`TabItem`、`Expander` 仍吃系统浅色调色板；两个对话框也仍是系统标题栏。要一致需自绘 ControlTemplate / `DwmSetWindowAttribute`。
+  - `CheckBox` / `RadioButton` 的**文字色已修**（`App.xaml` 补了 `Foreground` 隐含样式）——此前深色下设置窗口的主题三选一 / 导出格式二选一、主窗口的「传 null」都是黑字压深底。勾选标记本身仍由系统模板绘制。
 - 树节点图标混用 emoji（彩色、不随主题变色、大小不一）与单色字形，可统一成 `Segoe MDL2 Assets`。
 - `SettingsWindow` / `DeviceWizardWindow` 的按钮没有走主题样式（`BtnBase` 等样式定义在 `MainWindow.Resources`，不在 `App.xaml`），深色下是浅灰底。
 - **设备 DLL 目录的自动探测没覆盖当前布局**：`DeviceDirectoryResolver.Candidates` 只有 `<exe>\Bin` / `..\..\..\Bin` / `..\..\Bin` / `..\Bin`，判据是"目录里有任意 `*.dll`"。exe 在 `src\Bin` 时 `..\Bin` 正好命中 `src\Bin` 本身（里面有 NuGet 的 DLL）→ 一旦 `settings.json` 丢失或换台机器，就会把 `src\Bin` 当成设备目录，扫描不到 `OptoFidelity.*`，报"无法匹配机型 DLL"。现在没暴露只是因为设置里的 `DefaultDeviceDirectory` 兜着。修法：`Candidates` 里加 `MotionAPI`，或把判据改成"优先选含 `OptoFidelity.*.dll` 的目录"。
@@ -262,7 +263,6 @@ $msbuild = "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Curren
 | `HistoryService` / `ParameterMemory` / `SettingsService` / `DeviceManager` | 历史（按设备隔离）/ 参数记忆 / 设置 / 设备清单 |
 | `ThemeManager` | Light/Dark/系统 解析，主题字典挂应用级 |
 | `LogTextBuffer` | 并发入队 + 行数截断，供 UI 定时器取 |
-| `AssemblyLoader` / `LogService` | **当前未被使用**（见 §9） |
 
 **ViewModels（11）**
 

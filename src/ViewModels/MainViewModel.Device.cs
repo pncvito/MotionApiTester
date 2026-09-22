@@ -252,6 +252,8 @@ namespace MotionApiTester.ViewModels
                 //    本工具用 Assembly.Load(byte[]) + 纯元数据反射，从不执行设备侧代码，
                 //    所以这里必须主动激活一次；且必须在枚举 BaseTester 之前，
                 //    否则 CLR 解析 BaseTester 的依赖时会直接抛 FileNotFoundException。
+                //    另注意：光靠 LoadFrom 本身也不够 —— 它同样不会触发 Costura 展开，
+                //    展开（Attach）只发生在宿主程序集的模块静态构造里，靠的是"宿主代码被执行"。
                 var modelAsm = Assembly.Load(modelBytes);
                 _loadedAssemblies.Add(modelAsm);
                 if (CosturaActivator.TryActivate(modelAsm, AppendLog))

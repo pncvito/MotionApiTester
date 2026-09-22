@@ -77,10 +77,8 @@
     <Compile Include="Services\MachineTypeMatcher.cs" />
     <Compile Include="Services\MachineTypeReader.cs" />
     <Compile Include="Services\DeviceDirectoryScanner.cs" />
-    <Compile Include="Services\AssemblyLoader.cs" />
     <Compile Include="Services\ReflectionEnumerator.cs" />
     <Compile Include="Services\ApiInvoker.cs" />
-    <Compile Include="Services\LogService.cs" />
     <Compile Include="Services\HistoryService.cs" />
     <Compile Include="Services\ParameterMemory.cs" />
     <Compile Include="Services\DeviceManager.cs" />

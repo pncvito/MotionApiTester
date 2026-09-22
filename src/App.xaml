@@ -41,6 +41,22 @@
                 <Setter Property="Padding" Value="6"/>
                 <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
             </Style>
+
+            <!-- ⚠️ CheckBox / RadioButton 的 Foreground 也必须在这里给：
+                 它们默认取系统色（深色主题下是黑字），而本应用的主题字典用的是浅字 ——
+                 不覆盖就会出现"深色背景 + 黑字"看不见的情况。
+                 典型受害点是设置窗口（主题三选一、导出格式二选一）与主窗口参数区的「传 null」。
+                 注意只覆盖 Foreground：勾选框本身的勾选标记由系统模板绘制，
+                 换它要整个 ControlTemplate，得不偿失。 -->
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
+
+            <Style TargetType="RadioButton">
+                <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

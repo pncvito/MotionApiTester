@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,6 +34,19 @@ namespace MotionApiTester.Services
         /// 键可能是"显式构造过的派生类型"，取用时按可赋值关系匹配，见 <see cref="FindReusable"/>。
         /// </summary>
         private readonly Dictionary<Type, object> _instanceCache = new Dictionary<Type, object>();
+
+        /// <summary>
+        /// 实例 → 被调用次数（用来在日志里标注"同一个对象被复用了几次"）。
+        ///
+        /// <para>用 <see cref="ConditionalWeakTable{TKey,TValue}"/> 而不是普通 Dictionary：
+        /// 设备类的 <c>Equals</c>/<c>GetHashCode</c> 可能被重写甚至抛异常，普通字典查找会踩到它们；
+        /// 弱键还能保证这里的统计不会拖住设备对象不让回收。</para>
+        /// </summary>
+        private readonly ConditionalWeakTable<object, CallCounter> _callCounts =
+            new ConditionalWeakTable<object, CallCounter>();
+
+        /// <summary>调用计数容器（<see cref="ConditionalWeakTable{TKey,TValue}"/> 的值不能是值类型）</summary>
+        private sealed class CallCounter { public int Value; }
 
         /// <summary>调用完成回调（参数：方法 + 结果 + 实例）</summary>
         public Action<ApiMethod, InvokeResult, object> OnCompleted { get; set; }
@@ -83,6 +97,22 @@ namespace MotionApiTester.Services
         /// </summary>
         public object ResolveInstance(Type declaringType)
         {
+            return ResolveInstance(declaringType, out _);
+        }
+
+        /// <summary>
+        /// 解析可调用实例（带"本次是否新建"的输出）。
+        ///
+        /// <para>顺序：① 复用已建好、且能赋给 <paramref name="declaringType"/> 的实例；
+        /// ② 否则找该类型「派生得最深的可无参构造实现」并实例化（接口 / 抽象类 / 具体基类一视同仁）。</para>
+        ///
+        /// <para><paramref name="created"/> 输出本次是否<b>新建</b>了对象。日志里必须靠它区分
+        /// 「复用同一个对象」与「又建了一个」—— 两者的类型名完全相同，只看类型名会被彻底带偏
+        /// （尤其当同一台设备被加载两次、同名类型存在两份程序集副本时）。</para>
+        /// </summary>
+        public object ResolveInstance(Type declaringType, out bool created)
+        {
+            created = false;
             if (declaringType == null) return null;
 
             // ① 已有实例优先 —— 设备侧只有一个对象，详见 FindReusable
@@ -103,7 +133,7 @@ namespace MotionApiTester.Services
 
             if (impl != declaringType)
                 EnqueueLog($"✓ 解析实现 {declaringType.Name} → {impl.FullName}");
-            return GetOrCreateInstance(impl);
+            return GetOrCreateInstance(impl, out created);
         }
 
         /// <summary>异步调用方法 / 构造函数（自动处理实例创建 + logger 注入 + 参数转换）</summary>
@@ -158,8 +188,10 @@ namespace MotionApiTester.Services
                 // 3. 实例方法:解析实例(接口 / 抽象类自动找实现)
                 if (!method.IsStatic)
                 {
-                    instance = await Task.Run(() => ResolveInstance(target.DeclaringType), token);
-                    EnqueueLog($"✓ 实例就绪 {instance?.GetType().FullName ?? "(null)"}");
+                    // created 由 ResolveInstance 带出来 —— 日志要能一眼看出是复用还是又新建了一个
+                    bool created = false;
+                    instance = await Task.Run(() => ResolveInstance(target.DeclaringType, out created), token);
+                    EnqueueLog($"✓ 实例就绪 {DescribeInstance(instance, created)}");
                 }
 
                 // 4. 实际反射调用（只对"设备侧执行"这一段计时等待）
@@ -747,16 +779,44 @@ namespace MotionApiTester.Services
             }
         }
 
-        /// <summary>取得实例(同类型复用,保留设备内部状态)</summary>
-        private object GetOrCreateInstance(Type type)
+        /// <summary>
+        /// 一条实例日志：类型全名 + 本次是新建还是复用 + 对象身份 + 该实例被调用了几次。
+        ///
+        /// <para>为什么要写身份：只看类型名时，「同一个对象被复用」与「又建了一个」长得一模一样，
+        /// 排查设备侧 NRE（实例没初始化）时会被带偏。身份用 <see cref="RuntimeHelpers.GetHashCode"/>
+        /// 取，不受设备类重写 <c>GetHashCode</c> 影响。</para>
+        /// </summary>
+        private string DescribeInstance(object instance, bool created)
+        {
+            if (instance == null) return "(null)";
+            return $"{instance.GetType().FullName}（{(created ? "新建" : "复用")}"
+                 + $" · 身份 #{IdentityOf(instance):x8} · 该实例第 {BumpCallCount(instance)} 次调用）";
+        }
+
+        /// <summary>对象身份哈希（不受设备类重写 GetHashCode / Equals 影响）</summary>
+        private static int IdentityOf(object instance) => RuntimeHelpers.GetHashCode(instance);
+
+        /// <summary>累计"该实例被调用了几次"（弱键，见 <see cref="_callCounts"/>）</summary>
+        private int BumpCallCount(object instance)
+        {
+            var counter = _callCounts.GetOrCreateValue(instance);
+            return ++counter.Value;
+        }
+
+        /// <summary>取得实例(同类型复用,保留设备内部状态)；<paramref name="created"/> 输出本次是否新建</summary>
+        private object GetOrCreateInstance(Type type, out bool created)
         {
             if (_instanceCache.TryGetValue(type, out var existing) && existing != null)
+            {
+                created = false;
                 return existing;
+            }
 
-            var created = Activator.CreateInstance(type);
-            _instanceCache[type] = created;
-            EnqueueLog($"✓ 实例化 {type.FullName}");
-            return created;
+            var instance = Activator.CreateInstance(type);
+            _instanceCache[type] = instance;
+            created = true;
+            EnqueueLog($"✓ 实例化 {type.FullName}（新建 · 身份 #{IdentityOf(instance):x8}）");
+            return instance;
         }
 
         /// <summary>
